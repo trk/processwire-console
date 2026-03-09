@@ -1,0 +1,31 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+/**
+ * {{className}} Process Module
+ * 
+ * {{summary}}
+ */
+class {{className}} extends Process {
+
+    public static function getModuleInfo() {
+        return [
+            'title' => '{{title}}',
+            'version' => '0.0.1',
+            'summary' => '{{summary}}',
+            'permission' => '{{className}}',
+            'page' => [
+                'name' => '{{name}}',
+                'parent' => 'setup',
+                'title' => '{{title}}',
+            ],
+        ];
+    }
+
+    public function ___execute() {
+        return "<h2>Hello from {{title}}</h2>";
+    }
+}

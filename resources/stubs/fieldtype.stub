@@ -1,0 +1,41 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+/**
+ * {{className}} Fieldtype
+ * 
+ * {{summary}}
+ */
+class {{className}} extends Fieldtype {
+
+    public static function getModuleInfo() {
+        return [
+            'title' => '{{title}}',
+            'version' => '0.0.1',
+            'summary' => '{{summary}}',
+            'installs' => 'Inputfield{{className}}',
+        ];
+    }
+
+    public function ___getDatabaseSchema(Field $field) {
+        $schema = parent::___getDatabaseSchema($field);
+        $schema['data'] = 'text NOT NULL';
+        return $schema;
+    }
+
+    public function ___savePageField(Page $page, Field $field) {
+        return parent::___savePageField($page, $field);
+    }
+
+    public function ___loadPageField(Page $page, Field $field) {
+        return parent::___loadPageField($page, $field);
+    }
+
+    public function getInputfield(Page $page, Field $field) {
+        $inputfield = $this->modules->get('Inputfield{{className}}');
+        return $inputfield;
+    }
+}

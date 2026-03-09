@@ -1,0 +1,38 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+/**
+ * {{className}} Inputfield
+ * 
+ * {{summary}}
+ */
+class {{className}} extends Inputfield {
+
+    public static function getModuleInfo() {
+        return [
+            'title' => '{{title}}',
+            'version' => '0.0.1',
+            'summary' => '{{summary}}',
+        ];
+    }
+
+    public function ___render() {
+        $name = $this->attr('name');
+        $value = $this->attr('value');
+        return "<input type='text' name='\$name' value='\$value' />";
+    }
+
+    public function ___processInput(WireInputData $input) {
+        $name = $this->attr('name');
+        if(!isset($input[\$name])) return $this;
+        $value = $input[\$name];
+        if($value !== $this->attr('value')) {
+            $this->attr('value', $value);
+            $this->trackChange('value');
+        }
+        return $this;
+    }
+}

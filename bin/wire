@@ -1,0 +1,256 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use Symfony\Component\Console\Application;
+use Totoglu\ProcessWire\Console\Commands\MakeTemplateCommand;
+use Totoglu\ProcessWire\Console\Commands\MakeFieldCommand;
+use Totoglu\ProcessWire\Console\Commands\MakeModuleCommand;
+use Totoglu\ProcessWire\Console\Commands\UserCreateCommand;
+use Totoglu\ProcessWire\Console\Commands\UserListCommand;
+use Totoglu\ProcessWire\Console\Commands\UserUpdateCommand;
+use Totoglu\ProcessWire\Console\Commands\UserDeleteCommand;
+use Totoglu\ProcessWire\Console\Commands\ModuleListCommand;
+use Totoglu\ProcessWire\Console\Commands\ModuleInstallCommand;
+use Totoglu\ProcessWire\Console\Commands\ModuleUninstallCommand;
+use Totoglu\ProcessWire\Console\Commands\ModuleRefreshCommand;
+use Totoglu\ProcessWire\Console\Commands\ModuleEnableCommand;
+use Totoglu\ProcessWire\Console\Commands\ModuleDisableCommand;
+use Totoglu\ProcessWire\Console\Commands\ModuleUpgradeCommand;
+use Totoglu\ProcessWire\Console\Commands\TinkerCommand;
+use Totoglu\ProcessWire\Console\Commands\DbBackupCommand;
+use Totoglu\ProcessWire\Console\Commands\DbRestoreCommand;
+use Totoglu\ProcessWire\Console\Commands\BackupListCommand;
+use Totoglu\ProcessWire\Console\Commands\BackupPurgeCommand;
+use Totoglu\ProcessWire\Console\Commands\CacheWireClearCommand;
+use Totoglu\ProcessWire\Console\Commands\PageListCommand;
+use Totoglu\ProcessWire\Console\Commands\PageFindCommand;
+use Totoglu\ProcessWire\Console\Commands\PageCreateCommand;
+use Totoglu\ProcessWire\Console\Commands\PagePublishCommand;
+use Totoglu\ProcessWire\Console\Commands\PageUnpublishCommand;
+use Totoglu\ProcessWire\Console\Commands\PageTrashCommand;
+use Totoglu\ProcessWire\Console\Commands\PageMoveCommand;
+use Totoglu\ProcessWire\Console\Commands\PageRestoreCommand;
+use Totoglu\ProcessWire\Console\Commands\PageUpdateCommand;
+use Totoglu\ProcessWire\Console\Commands\LogsCommand;
+use Totoglu\ProcessWire\Console\Commands\LogsTailCommand;
+use Totoglu\ProcessWire\Console\Commands\LogsClearCommand;
+use Totoglu\ProcessWire\Console\Commands\FieldListCommand;
+use Totoglu\ProcessWire\Console\Commands\FieldDeleteCommand;
+use Totoglu\ProcessWire\Console\Commands\FieldInfoCommand;
+use Totoglu\ProcessWire\Console\Commands\FieldUpdateCommand;
+use Totoglu\ProcessWire\Console\Commands\FieldRenameCommand;
+use Totoglu\ProcessWire\Console\Commands\FieldAttachCommand;
+use Totoglu\ProcessWire\Console\Commands\FieldDetachCommand;
+use Totoglu\ProcessWire\Console\Commands\TemplateListCommand;
+use Totoglu\ProcessWire\Console\Commands\TemplateDeleteCommand;
+use Totoglu\ProcessWire\Console\Commands\TemplateInfoCommand;
+use Totoglu\ProcessWire\Console\Commands\TemplateFieldsReorderCommand;
+use Totoglu\ProcessWire\Console\Commands\TemplateUpdateCommand;
+use Totoglu\ProcessWire\Console\Commands\TemplateRenameCommand;
+use Totoglu\ProcessWire\Console\Commands\RoleListCommand;
+use Totoglu\ProcessWire\Console\Commands\RoleCreateCommand;
+use Totoglu\ProcessWire\Console\Commands\RoleGrantCommand;
+use Totoglu\ProcessWire\Console\Commands\RoleRevokeCommand;
+use Totoglu\ProcessWire\Console\Commands\PermissionListCommand;
+use Totoglu\ProcessWire\Console\Commands\PermissionCreateCommand;
+use Totoglu\ProcessWire\Console\Commands\PermissionDeleteCommand;
+use Totoglu\ProcessWire\Console\Commands\CacheClearCommand;
+
+
+/**
+ * Locate the Composer autoloader.
+ */
+$autoloader =  __DIR__ . '/../../../autoload.php';
+if (!file_exists($autoloader)) {
+    echo "Error: Could not locate composer autoloader.\n";
+    exit(1);
+}
+
+$autoloader = realpath($autoloader);
+
+require $autoloader;
+
+/**
+ * Locate ProcessWire root and bootstrap core.
+ */
+$pwRoot = null;
+$tempRoot = dirname($autoloader, 2);
+
+// Go up until we find the 'wire' directory
+while ($tempRoot !== '/' && !empty($tempRoot)) {
+    if (file_exists($tempRoot . '/wire/core/ProcessWire.php')) {
+        $pwRoot = realpath($tempRoot);
+        break;
+    }
+    $parent = dirname($tempRoot);
+    if ($parent === $tempRoot) break;
+    $tempRoot = $parent;
+}
+
+if (!$pwRoot) {
+    echo "Error: Could not locate ProcessWire core (wire/core/ProcessWire.php) in any parent directory of {$autoloader}.\n";
+    exit(1);
+}
+
+if (!class_exists('\ProcessWire\ProcessWire', false)) {
+    require_once($pwRoot . '/wire/core/ProcessWire.php');
+}
+
+// Manual Clean Bootstrap
+$_SERVER['HTTP_HOST'] = 'localhost';
+$wire = null;
+
+try {
+    $config = \ProcessWire\ProcessWire::buildConfig($pwRoot);
+    // Only attempt full bootstrap if database is configured
+    if ($config->dbName) {
+        $wire = new \ProcessWire\ProcessWire($config);
+    }
+} catch (\Throwable $e) {
+    // Database or config issue - continue to show basic CLI helps
+}
+
+$application = new Application('ProcessWire Command Line Interface', '1.0.0');
+
+// Core Commands
+$application->addCommands([
+    new MakeTemplateCommand(),
+    new MakeFieldCommand(),
+    new MakeModuleCommand(),
+    new UserCreateCommand(),
+    new UserListCommand(),
+    new UserUpdateCommand(),
+    new UserDeleteCommand(),
+    new RoleListCommand(),
+    new RoleCreateCommand(),
+    new RoleGrantCommand(),
+    new RoleRevokeCommand(),
+    new PermissionListCommand(),
+    new PermissionCreateCommand(),
+    new PermissionDeleteCommand(),
+    new PageListCommand(),
+    new PageFindCommand(),
+    new PageCreateCommand(),
+    new PagePublishCommand(),
+    new PageUnpublishCommand(),
+    new PageTrashCommand(),
+    new PageMoveCommand(),
+    new PageRestoreCommand(),
+    new PageUpdateCommand(),
+    new FieldListCommand(),
+    new FieldDeleteCommand(),
+    new FieldInfoCommand(),
+    new FieldUpdateCommand(),
+    new FieldRenameCommand(),
+    new FieldAttachCommand(),
+    new FieldDetachCommand(),
+    new TemplateListCommand(),
+    new TemplateDeleteCommand(),
+    new TemplateInfoCommand(),
+    new TemplateFieldsReorderCommand(),
+    new TemplateUpdateCommand(),
+    new TemplateRenameCommand(),
+    new ModuleListCommand(),
+    new ModuleInstallCommand(),
+    new ModuleUninstallCommand(),
+    new ModuleRefreshCommand(),
+    new ModuleEnableCommand(),
+    new ModuleDisableCommand(),
+    new ModuleUpgradeCommand(),
+    new TinkerCommand(),
+    new DbBackupCommand(),
+    new DbRestoreCommand(),
+    new BackupListCommand(),
+    new BackupPurgeCommand(),
+    new LogsCommand(),
+    new LogsTailCommand(),
+    new LogsClearCommand(),
+    new CacheWireClearCommand(),
+    new CacheClearCommand(),
+]);
+
+/**
+ * Dynamic Command Loading from Site Profile
+ */
+if ($wire instanceof \ProcessWire\ProcessWire) {
+    try {
+        $siteCommandsPath = $wire->config->paths->site . 'Commands/';
+        if (is_dir($siteCommandsPath)) {
+            $files = glob($siteCommandsPath . '*Command.php');
+            foreach ($files as $file) {
+                require_once $file;
+                $className = basename($file, '.php');
+                if (class_exists($className)) {
+                    $cmd = new $className();
+                    if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
+                        $application->add($cmd);
+                    }
+                }
+            }
+        }
+    } catch (\Throwable $e) {
+        // Silently fail site-specific command loading
+    }
+}
+
+/**
+ * External Package Commands (Composer-driven, Laravel-style)
+ * Reads vendor/composer/installed.json for packages that declare:
+ *   "extra": { "processwire-console": { "commands": ["FQCN", ...] } }
+ * Additionally, reads root composer.json "repositories" of type "path"
+ * and checks their composer.json for the same extra key.
+ */
+try {
+    $vendorRoot = dirname($autoloader, 2); // e.g., project root
+    $installedJson = $vendorRoot . '/vendor/composer/installed.json';
+    if (is_file($installedJson)) {
+        $json = json_decode((string)file_get_contents($installedJson), true);
+        $packages = $json['packages'] ?? $json; // composer v2 vs v1 structure
+        if (is_array($packages)) {
+            foreach ($packages as $pkg) {
+                $extra = $pkg['extra']['processwire-console'] ?? null;
+                if (is_array($extra) && !empty($extra['commands']) && is_array($extra['commands'])) {
+                    foreach ($extra['commands'] as $fqcn) {
+                        if (is_string($fqcn) && class_exists($fqcn)) {
+                            $cmd = new $fqcn();
+                            if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
+                                $application->add($cmd);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Support path repositories defined in root composer.json
+    $rootComposer = $vendorRoot . '/composer.json';
+    if (is_file($rootComposer)) {
+        $rootCfg = json_decode((string)file_get_contents($rootComposer), true);
+        $repos = $rootCfg['repositories'] ?? [];
+        foreach ($repos as $repo) {
+            if (($repo['type'] ?? '') !== 'path') continue;
+            $url = $repo['url'] ?? '';
+            if ($url === '') continue;
+            $pkgComposer = $vendorRoot . '/' . trim($url, '/') . '/composer.json';
+            if (!is_file($pkgComposer)) continue;
+            $pkgCfg = json_decode((string)file_get_contents($pkgComposer), true);
+            $extra = $pkgCfg['extra']['processwire-console']['commands'] ?? null;
+            if (is_array($extra)) {
+                foreach ($extra as $fqcn) {
+                    if (is_string($fqcn) && class_exists($fqcn)) {
+                        $cmd = new $fqcn();
+                        if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
+                            $application->add($cmd);
+                        }
+                    }
+                }
+            }
+        }
+    }
+} catch (\Throwable $e) {
+    // ignore discovery errors
+}
+
+$application->run();

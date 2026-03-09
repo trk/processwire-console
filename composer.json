@@ -1,0 +1,27 @@
+{
+  "name": "trk/processwire-console",
+  "description": "A Laravel-style CLI tool for ProcessWire CMS.",
+  "type": "library",
+  "license": "MIT",
+  "require": {
+    "php": ">=8.3",
+    "symfony/console": "^7.0",
+    "laravel/prompts": "^0.3.13"
+  },
+  "autoload": {
+    "psr-4": {
+      "Totoglu\\ProcessWire\\Console\\": "src/"
+    }
+  },
+  "bin": [
+    "bin/wire"
+  ],
+  "scripts": {
+    "post-install-cmd": [
+      "php -r \"if (!file_exists('../../wire')) { symlink('vendor/bin/wire', '../../wire'); echo 'Linked wire executable to project root.\\n'; } else { echo 'wire executable already exists in project root.\\n'; }\""
+    ],
+    "post-update-cmd": [
+      "@post-install-cmd"
+    ]
+  }
+}
