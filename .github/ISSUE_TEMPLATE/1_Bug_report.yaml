@@ -1,0 +1,75 @@
+name: 🐛 Bug Report
+description: Report reproducible bugs (English only). For security issues, use the Security contact link.
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please file issues in English only. Provide exact CLI invocations and outputs where relevant.
+  - type: input
+    id: console-version
+    attributes:
+      label: processwire-console version
+      placeholder: v1.2.3 or dev-main
+    validations:
+      required: true
+  - type: input
+    id: pw-version
+    attributes:
+      label: ProcessWire version
+      placeholder: 3.0.xxx
+    validations:
+      required: true
+  - type: input
+    id: php-version
+    attributes:
+      label: PHP version
+      placeholder: 8.3.x
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / Shell
+      placeholder: Ubuntu 22.04 / bash
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the problem
+    validations:
+      required: true
+  - type: textarea
+    id: how-to-reproduce
+    attributes:
+      label: How to reproduce
+      description: |
+        Include exact commands and output, e.g.:
+        ```bash
+        php vendor/bin/wire page:create -i
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: possible-solution
+    attributes:
+      label: Possible Solution (optional)
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context (optional)

@@ -1,0 +1,70 @@
+name: "processwire-console: Release"
+on:
+  push:
+    tags:
+      - "processwire-console-v*"
+      - "console-v*"
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag (e.g., v1.2.3 or console-v1.2.3)"
+        required: true
+      notes:
+        description: "Optional release notes (appended to auto-generated notes)"
+        required: false
+jobs:
+  build_and_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer:v2
+
+      - name: Validate composer (package)
+        working-directory: packages/processwire-console
+        run: composer validate --strict
+
+      - name: Install dependencies (no-dev)
+        working-directory: packages/processwire-console
+        run: composer install --no-interaction --no-progress --no-suggest --no-dev -o
+
+      - name: PHP syntax check
+        working-directory: packages/processwire-console
+        run: |
+          find src -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Determine tag
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.version }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create Git tag (manual dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          git tag "${{ steps.meta.outputs.tag }}"
+          git push origin "${{ steps.meta.outputs.tag }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          generate_release_notes: true
+          body: ${{ inputs.notes }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

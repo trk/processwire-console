@@ -1,0 +1,38 @@
+name: 🚀 Feature Request
+description: RFCs and ideas (English only) for new commands or UX improvements
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please use English. Describe the CLI UX you expect and consider interactive (-i) vs. flags, and JSON output needs.
+  - type: textarea
+    id: description
+    attributes:
+      label: Summary
+      description: A clear and concise description of the new feature
+    validations:
+      required: true
+  - type: textarea
+    id: cli-ux
+    attributes:
+      label: Proposed CLI UX
+      description: Example commands, flags, prompts, and sample outputs (plain and --json)
+      value: |
+        ```bash
+        php vendor/bin/wire <command> [options]
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: Realistic scenarios this feature enables or simplifies
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Backward Compatibility
+      description: Does this change break existing commands? Deprecation path (if any)
