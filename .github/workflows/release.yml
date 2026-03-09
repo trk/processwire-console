@@ -1,14 +1,14 @@
-name: "processwire-console: Release"
+name: "processwire-boost: Release"
 on:
   push:
     tags:
-      - "processwire-console-v*"
-      - "console-v*"
+      - "processwire-boost-v*"
+      - "boost-v*"
       - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Release tag (e.g., v1.2.3 or console-v1.2.3)"
+        description: "Release tag (e.g., v1.2.3 or boost-v1.2.3)"
         required: true
       notes:
         description: "Optional release notes (appended to auto-generated notes)"
@@ -23,6 +23,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Resolve package directory
+        id: pkgdir
+        shell: bash
+        run: |
+          if [ -d "packages/processwire-boost" ]; then
+            echo "path=packages/processwire-boost" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=." >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
@@ -31,15 +40,15 @@ jobs:
           tools: composer:v2
 
       - name: Validate composer (package)
-        working-directory: packages/processwire-console
+        working-directory: ${{ steps.pkgdir.outputs.path }}
         run: composer validate --strict
 
       - name: Install dependencies (no-dev)
-        working-directory: packages/processwire-console
+        working-directory: ${{ steps.pkgdir.outputs.path }}
         run: composer install --no-interaction --no-progress --no-suggest --no-dev -o
 
       - name: PHP syntax check
-        working-directory: packages/processwire-console
+        working-directory: ${{ steps.pkgdir.outputs.path }}
         run: |
           find src -type f -name '*.php' -print0 | xargs -0 -n1 php -l
 
