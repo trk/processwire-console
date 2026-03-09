@@ -1,14 +1,14 @@
-name: "processwire-boost: Release"
+name: "processwire-console: Release"
 on:
   push:
     tags:
-      - "processwire-boost-v*"
-      - "boost-v*"
+      - "processwire-console-v*"
+      - "console-v*"
       - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Release tag (e.g., v1.2.3 or boost-v1.2.3)"
+        description: "Release tag (e.g., v1.2.3 or console-v1.2.3)"
         required: true
       notes:
         description: "Optional release notes (appended to auto-generated notes)"
@@ -27,8 +27,8 @@ jobs:
         id: pkgdir
         shell: bash
         run: |
-          if [ -d "packages/processwire-boost" ]; then
-            echo "path=packages/processwire-boost" >> "$GITHUB_OUTPUT"
+          if [ -d "packages/processwire-console" ]; then
+            echo "path=packages/processwire-console" >> "$GITHUB_OUTPUT"
           else
             echo "path=." >> "$GITHUB_OUTPUT"
           fi
