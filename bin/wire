@@ -57,6 +57,7 @@ use Totoglu\Console\Commands\PermissionListCommand;
 use Totoglu\Console\Commands\PermissionCreateCommand;
 use Totoglu\Console\Commands\PermissionDeleteCommand;
 use Totoglu\Console\Commands\CacheClearCommand;
+use Totoglu\Console\Commands\VersionCommand;
 use Totoglu\Console\Commands\MakeMigrationCommand;
 use Totoglu\Console\Commands\MigrateCommand;
 use Totoglu\Console\Commands\MigrateRollbackCommand;
@@ -227,6 +228,7 @@ $application->addCommands([
     new LogClearAllCommand(),
     new CacheWireClearCommand(),
     new CacheClearCommand(),
+    new VersionCommand(),
     // Migration Commands
     new MakeMigrationCommand(),
     new MigrateCommand(),
