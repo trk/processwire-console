@@ -140,8 +140,38 @@ try {
     // Database or config issue - continue to show basic CLI helps
 }
 
-$application = new Application('ProcessWire Command Line Interface', '1.0.0');
+$consoleVersion = '1.0.0';
+if (class_exists('\Composer\InstalledVersions')) {
+    try {
+        $consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '1.0.0';
+    } catch (\Throwable $e) {}
+}
 
+$pwVersion = 'Unknown';
+if (class_exists('\ProcessWire\ProcessWire', false)) {
+    $pwVersion = \ProcessWire\ProcessWire::versionMajor . '.' . \ProcessWire\ProcessWire::versionMinor . '.' . \ProcessWire\ProcessWire::versionRevision;
+    if (\ProcessWire\ProcessWire::versionSuffix) {
+        $pwVersion .= '-' . \ProcessWire\ProcessWire::versionSuffix;
+    }
+}
+
+$argv = $_SERVER['argv'] ?? [];
+if (in_array('--version', $argv) || in_array('-V', $argv)) {
+    // Check if there is a 'boost' context
+    if (isset($argv[1]) && str_starts_with($argv[1], 'boost')) {
+        $boostVersion = 'Unknown';
+        if (class_exists('\Composer\InstalledVersions')) {
+            try {
+                $boostVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-boost') ?? 'Unknown';
+            } catch (\Throwable $e) {}
+        }
+        echo "ProcessWire Boost $boostVersion\n";
+        exit(0);
+    }
+}
+
+$applicationVersion = $consoleVersion . ' (ProcessWire ' . $pwVersion . ')';
+$application = new Application('ProcessWire Command Line Interface', $applicationVersion);
 // Core Commands
 $application->addCommands([
 
