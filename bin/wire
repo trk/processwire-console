@@ -205,20 +205,45 @@ $application->addCommands([
 ]);
 
 /**
- * Dynamic Command Loading from Site Profile
+ * Dynamic Command Loading from Site Profile and Modules
+ * This scans site/commands/ and site/modules/[module]/commands/ directories.
+ * It uses a simple namespace parser so the commands can have custom namespaces.
  */
 if ($wire instanceof \ProcessWire\ProcessWire) {
     try {
-        $siteCommandsPath = $wire->config->paths->site . 'Commands/';
-        if (is_dir($siteCommandsPath)) {
-            $files = glob($siteCommandsPath . '*Command.php');
-            foreach ($files as $file) {
-                require_once $file;
-                $className = basename($file, '.php');
-                if (class_exists($className)) {
-                    $cmd = new $className();
-                    if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                        $application->add($cmd);
+        $commandPaths = [
+            $wire->config->paths->site . 'commands/',
+        ];
+
+        // Include any module that has a commands/ directory
+        $modulesPath = $wire->config->paths->siteModules;
+        if (is_dir($modulesPath)) {
+            $matchedModules = glob($modulesPath . '*/commands/', GLOB_ONLYDIR) ?: [];
+            $commandPaths = array_merge($commandPaths, $matchedModules);
+        }
+
+        foreach ($commandPaths as $siteCommandsPath) {
+            if (is_dir($siteCommandsPath)) {
+                $files = glob($siteCommandsPath . '*Command.php');
+                if ($files) {
+                    foreach ($files as $file) {
+                        require_once $file;
+                        
+                        // Parse the namespace if it exists (simple regex for basic parsing)
+                        $namespace = '';
+                        $content = file_get_contents($file);
+                        if (preg_match('/namespace\s+([^;]+);/', $content, $matches)) {
+                            $namespace = trim($matches[1]) . chr(92);
+                        }
+                        
+                        $className = $namespace . basename($file, '.php');
+                        
+                        if (class_exists($className)) {
+                            $cmd = new $className();
+                            if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
+                                $application->add($cmd);
+                            }
+                        }
                     }
                 }
             }
@@ -230,26 +255,32 @@ if ($wire instanceof \ProcessWire\ProcessWire) {
 
 /**
  * External Package Commands (Composer-driven auto-discovery)
- * Reads vendor/composer/installed.json for packages that declare:
- *   "extra": { "processwire-console": { "commands": ["FQCN", ...] } }
- * Additionally, reads root composer.json "repositories" of type "path"
- * and checks their composer.json for the same extra key.
+ * Reads vendor/composer/installed.json for global vendor packages
+ * that declare: "extra": { "processwire-console": { "commands": ["FQCN", ...] } }
  */
 try {
+    // Globally installed Vendor Package auto-discovery
     $vendorRoot = dirname($autoloader, 2); // e.g., project root
     $installedJson = $vendorRoot . '/vendor/composer/installed.json';
     if (is_file($installedJson)) {
-        $json = json_decode((string)file_get_contents($installedJson), true);
-        $packages = $json['packages'] ?? $json; // composer v2 vs v1 structure
-        if (is_array($packages)) {
-            foreach ($packages as $pkg) {
-                $extra = $pkg['extra']['processwire-console'] ?? null;
-                if (is_array($extra) && !empty($extra['commands']) && is_array($extra['commands'])) {
-                    foreach ($extra['commands'] as $fqcn) {
-                        if (is_string($fqcn) && class_exists($fqcn)) {
-                            $cmd = new $fqcn();
-                            if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                                $application->add($cmd);
+        $jsonStr = file_get_contents($installedJson);
+        if (is_string($jsonStr)) {
+            $json = json_decode($jsonStr, true);
+            if (is_array($json)) {
+                $packages = $json;
+                if (array_key_exists('packages', $json)) {
+                    $packages = $json['packages'];
+                }
+                if (is_array($packages)) {
+                    foreach ($packages as $pkg) {
+                        if (is_array($pkg) && isset($pkg['extra']['processwire-console']['commands']) && is_array($pkg['extra']['processwire-console']['commands'])) {
+                            foreach ($pkg['extra']['processwire-console']['commands'] as $fqcn) {
+                                if (is_string($fqcn) && class_exists($fqcn)) {
+                                    $cmd = new $fqcn();
+                                    if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
+                                        $application->add($cmd);
+                                    }
+                                }
                             }
                         }
                     }
