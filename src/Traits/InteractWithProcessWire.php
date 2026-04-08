@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Totoglu\Console\Traits;
 
 use function Laravel\Prompts\search;
-use function Laravel\Prompts\multisearch;
 use function Laravel\Prompts\multiselect;
 
 trait InteractWithProcessWire
@@ -166,10 +165,10 @@ trait InteractWithProcessWire
                         $options[] = $name;
                     }
                 }
-                
+
                 // Limit to 15
                 $options = array_slice($options, 0, 15);
-                
+
                 return empty($options) ? ['No matching modules found'] : $options;
             },
             placeholder: 'Type module name...'
@@ -189,18 +188,18 @@ trait InteractWithProcessWire
             options: function (string $value) {
                 $options = [];
                 $modules = \ProcessWire\wire('modules');
-                
+
                 // ProcessWire often caches this, but we'll get whatever's available
                 $installable = $modules->getInstallable();
-                
+
                 foreach ($installable as $name) {
                     if (empty($value) || stripos($name, $value) !== false) {
                         $options[] = $name;
                     }
                 }
-                
+
                 $options = array_slice($options, 0, 15);
-                
+
                 return empty($options) ? ['No matching installable modules found'] : $options;
             },
             placeholder: 'Type module name...'
@@ -225,9 +224,9 @@ trait InteractWithProcessWire
                         $options[] = $name;
                     }
                 }
-                
+
                 $options = array_slice($options, 0, 15);
-                
+
                 return empty($options) ? ['No matching logs found'] : $options;
             },
             placeholder: 'Type log name...'

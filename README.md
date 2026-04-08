@@ -955,6 +955,15 @@ Explicitly create the `wire_migrations` tracking table (auto-created by `migrate
 php vendor/bin/wire migrate:install
 ```
 
+### Version
+
+Show the active version of ProcessWire, processwire-console, and associated ecosystem packages like processwire-boost.
+
+```bash
+php vendor/bin/wire version
+php vendor/bin/wire -V
+```
+
 ---
 
 ### Tinker (REPL)
