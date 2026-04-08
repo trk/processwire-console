@@ -1010,13 +1010,13 @@ Interactive prompts are automatically disabled when:
 
 ## Extending the Console
 
-### Method 1: Site Commands
+### Method 1: Drop-in Commands (Site & Modules)
 
-Place command files in `site/Commands/`. They are auto-loaded on every CLI invocation.
+Place command files in `site/commands/` or inside any module at `site/modules/[ModuleName]/commands/`. They are automatically discovered and loaded on every CLI invocation.
 
 ```php
 <?php
-// site/Commands/SyncProductsCommand.php
+// site/commands/SyncProductsCommand.php
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -1151,7 +1151,9 @@ processwire-console/
 2. Walk upward to find `wire/core/ProcessWire.php`
 3. Boot ProcessWire with database config (graceful fallback if unavailable)
 4. Register 57 built-in commands (including 8 migration commands)
-5. Auto-load `site/Commands/*.php`
+5. Auto-discover custom commands dynamically from:
+   - Site profile: `site/commands/`
+   - Installed modules: `site/modules/*/commands/`
 6. Discover commands from Composer packages (`extra.processwire-console.commands`)
 7. Run the Symfony Console application
 
