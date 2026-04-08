@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Totoglu\ProcessWire\Console\Commands;
+namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Totoglu\ProcessWire\Console\Migration\Migrator;
-use Totoglu\ProcessWire\Console\Migration\MigrationRepository;
+use Totoglu\Console\Migration\Migrator;
+use Totoglu\Console\Migration\MigrationRepository;
 
 final class MigrateRefreshCommand extends Command
 {

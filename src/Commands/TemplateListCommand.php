@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Totoglu\ProcessWire\Console\Commands;
+namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,7 +18,7 @@ final class TemplateListCommand extends Command
         $this
             ->setName('template:list')
             ->setDescription('List all templates in the ProcessWire installation.')
-            ->addOption('search', 'q', InputOption::VALUE_REQUIRED, 'Search templates by name or tag')
+            ->addOption('search', 's', InputOption::VALUE_REQUIRED, 'Search templates by name or tag')
             ->addOption('tag', 't', InputOption::VALUE_REQUIRED, 'Filter by template tag')
             ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
     }

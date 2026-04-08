@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Totoglu\ProcessWire\Console\Migration;
+namespace Totoglu\Console\Migration;
 
 /**
  * MigrationRepository — Database tracking layer for migrations.

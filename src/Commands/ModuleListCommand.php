@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Totoglu\ProcessWire\Console\Commands;
+namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -18,9 +18,9 @@ final class ModuleListCommand extends Command
         $this
             ->setName('module:list')
             ->setDescription('List installed modules in the ProcessWire installation.')
-            ->addOption('search', 'q', InputOption::VALUE_REQUIRED, 'Search modules by name or title')
+            ->addOption('search', 's', InputOption::VALUE_REQUIRED, 'Search modules by name or title')
             ->addOption('core', 'c', InputOption::VALUE_NONE, 'Show only core modules')
-            ->addOption('site', 'v', InputOption::VALUE_NONE, 'Show only site modules (third-party)')
+            ->addOption('site', null, InputOption::VALUE_NONE, 'Show only site modules (third-party)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
     }
 

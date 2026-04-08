@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Totoglu\ProcessWire\Console\Commands;
+namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -19,7 +19,7 @@ final class FieldListCommand extends Command
             ->setName('field:list')
             ->setDescription('List all fields in the ProcessWire installation.')
             ->addOption('type', 't', InputOption::VALUE_REQUIRED, 'Filter by field type (e.g., FieldtypeText)')
-            ->addOption('search', 'q', InputOption::VALUE_REQUIRED, 'Search fields by name or label')
+            ->addOption('search', 's', InputOption::VALUE_REQUIRED, 'Search fields by name or label')
             ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
     }
 
