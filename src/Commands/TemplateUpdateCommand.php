@@ -68,7 +68,7 @@ final class TemplateUpdateCommand extends Command
             try {
                 $template->set($k, $v);
             } catch (\Throwable $e) {
-                // ignore invalid keys
+                $io->warning("Property '{$k}': " . $e->getMessage());
             }
         }
         $template->save();

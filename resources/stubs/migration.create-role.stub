@@ -1,0 +1,54 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+return new class {
+
+    private string $roleName = '{{name}}';
+    private string $roleTitle = '{{title}}';
+
+    /** @var string[] Permissions to grant to this role */
+    private array $permissions = [
+        'page-view',
+        'page-edit',
+    ];
+
+    public function up(): void
+    {
+        $roles = wire('roles');
+        $permissions = wire('permissions');
+
+        $role = $roles->add($this->roleName);
+        $role->title = $this->roleTitle;
+        $role->save();
+
+        foreach ($this->permissions as $permName) {
+            $perm = $permissions->get($permName);
+            if ($perm && $perm->id) {
+                $role->addPermission($perm);
+            }
+        }
+        $role->save();
+    }
+
+    public function down(): void
+    {
+        $role = wire('roles')->get($this->roleName);
+        if (!$role || !$role->id) {
+            return;
+        }
+
+        // Guard: role must not be assigned to any users
+        $usersWithRole = wire('users')->count("roles={$role}, include=all");
+        if ($usersWithRole > 0) {
+            throw new WireException(
+                "Cannot delete role '{$this->roleName}' — {$usersWithRole} user(s) have this role. "
+                . "Remove the role from users first."
+            );
+        }
+
+        wire('roles')->delete($role);
+    }
+};

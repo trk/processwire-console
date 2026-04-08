@@ -34,8 +34,15 @@ final class CacheClearCommand extends Command
                 \RecursiveIteratorIterator::CHILD_FIRST
             );
             foreach ($files as $fileinfo) {
-                $todo = ($fileinfo->isDir() ? 'rmdir' : 'unlink');
-                @$todo($fileinfo->getRealPath());
+                $realPath = $fileinfo->getRealPath();
+                if ($realPath === false) {
+                    continue;
+                }
+                if ($fileinfo->isDir()) {
+                    @rmdir($realPath);
+                } else {
+                    unlink($realPath);
+                }
             }
             $io->info("Compiled templates (FileCompiler) cache cleared.");
         }

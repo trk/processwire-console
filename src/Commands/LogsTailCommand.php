@@ -25,7 +25,7 @@ final class LogsTailCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        $file = (string)$input->getOption('file');
+        $file = basename((string)$input->getOption('file'));
         $lines = (int)$input->getOption('lines');
         $follow = (bool)$input->getOption('follow');
 

@@ -32,7 +32,8 @@ final class RoleCreateCommand extends Command
         $permsOpt = $input->getOption('permissions') ? (string)$input->getOption('permissions') : '';
         $wantInteractive = (bool)$input->getOption('interactive');
 
-        if (\ProcessWire\wire('roles')->get($name)->id) {
+        $existing = \ProcessWire\wire('roles')->get($name);
+        if ($existing && $existing->id) {
             $io->error("Role '{$name}' already exists.");
             return Command::FAILURE;
         }

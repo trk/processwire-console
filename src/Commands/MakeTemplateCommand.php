@@ -32,7 +32,8 @@ final class MakeTemplateCommand extends Command
         $fieldsOpt = $input->getOption('fields') ? (string)$input->getOption('fields') : '';
         $wantInteractive = (bool)$input->getOption('interactive');
 
-        if (\ProcessWire\wire('templates')->get($name)->id) {
+        $existing = \ProcessWire\wire('templates')->get($name);
+        if ($existing && $existing->id) {
             $io->error("Template '{$name}' already exists.");
             return Command::FAILURE;
         }
@@ -73,9 +74,6 @@ final class MakeTemplateCommand extends Command
                 }
             }
             $fg->save();
-        } else {
-            // Default to 'default' fieldgroup when nothing selected
-            $fg = $fgApi->get('default');
         }
         $t->fieldgroup = $fg;
         $t->save();

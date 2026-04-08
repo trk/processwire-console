@@ -119,7 +119,7 @@ final class PageUpdateCommand extends Command
             try {
                 $page->set($k, $v);
             } catch (\Throwable $e) {
-                // ignore invalid keys
+                $io->warning("Field '{$k}': " . $e->getMessage());
             }
         }
 

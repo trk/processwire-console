@@ -29,7 +29,7 @@ final class TinkerCommand extends Command
             try {
                 ob_start();
                 eval($code . ';');
-                $result = ob_get_clean();
+                $result = ob_get_clean() ?: '';
                 $output->writeln($result);
                 return Command::SUCCESS;
             } catch (\Throwable $e) {
@@ -43,14 +43,14 @@ final class TinkerCommand extends Command
 
         while (true) {
             $line = $io->ask('>>> ');
-            if (in_array(strtolower($line), ['exit', 'quit', 'die'])) {
+            if ($line === null || in_array(strtolower($line), ['exit', 'quit', 'die'])) {
                 break;
             }
 
             try {
                 ob_start();
                 eval($line . ';');
-                $result = ob_get_clean();
+                $result = ob_get_clean() ?: '';
                 $output->writeln($result);
             } catch (\Throwable $e) {
                 $io->error($e->getMessage());

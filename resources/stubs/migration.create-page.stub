@@ -1,0 +1,54 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+return new class {
+
+    private string $parentPath = '{{parent}}';
+    private string $templateName = '{{template}}';
+    private string $pageName = '{{name}}';
+    private string $pageTitle = '{{title}}';
+
+    public function up(): void
+    {
+        $pages = wire('pages');
+        $parent = $pages->get($this->parentPath);
+
+        if (!$parent || !$parent->id) {
+            throw new \RuntimeException("Parent page '{$this->parentPath}' not found.");
+        }
+
+        $template = wire('templates')->get($this->templateName);
+        if (!$template || !$template->id) {
+            throw new \RuntimeException("Template '{$this->templateName}' not found.");
+        }
+
+        $page = new Page();
+        $page->template = $template;
+        $page->parent = $parent;
+        $page->name = $this->pageName;
+        $page->title = $this->pageTitle;
+        $page->save();
+    }
+
+    public function down(): void
+    {
+        $page = wire('pages')->get("name={$this->pageName}, parent={$this->parentPath}, include=all");
+        if (!$page || !$page->id) {
+            return;
+        }
+
+        // Guard: page must not have children
+        $childCount = $page->numChildren("include=all");
+        if ($childCount > 0) {
+            throw new WireException(
+                "Cannot delete page '{$page->path}' — it has {$childCount} child page(s). "
+                . "Delete child pages first or handle manually."
+            );
+        }
+
+        wire('pages')->delete($page);
+    }
+};

@@ -57,13 +57,41 @@ use Totoglu\ProcessWire\Console\Commands\PermissionListCommand;
 use Totoglu\ProcessWire\Console\Commands\PermissionCreateCommand;
 use Totoglu\ProcessWire\Console\Commands\PermissionDeleteCommand;
 use Totoglu\ProcessWire\Console\Commands\CacheClearCommand;
+use Totoglu\ProcessWire\Console\Commands\MakeMigrationCommand;
+use Totoglu\ProcessWire\Console\Commands\MigrateCommand;
+use Totoglu\ProcessWire\Console\Commands\MigrateRollbackCommand;
+use Totoglu\ProcessWire\Console\Commands\MigrateResetCommand;
+use Totoglu\ProcessWire\Console\Commands\MigrateRefreshCommand;
+use Totoglu\ProcessWire\Console\Commands\MigrateFreshCommand;
+use Totoglu\ProcessWire\Console\Commands\MigrateStatusCommand;
+use Totoglu\ProcessWire\Console\Commands\MigrateInstallCommand;
 
 
 /**
  * Locate the Composer autoloader.
  */
-$autoloader =  __DIR__ . '/../../../autoload.php';
-if (!file_exists($autoloader)) {
+$autoloader = null;
+
+// Usually Composer sets this global variable when calling via vendor/bin
+if (isset($GLOBALS['_composer_autoload_path']) && file_exists($GLOBALS['_composer_autoload_path'])) {
+    $autoloader = $GLOBALS['_composer_autoload_path'];
+} else {
+    // Fallbacks
+    $candidates = [
+        __DIR__ . '/../../../autoload.php',           // Typical vendor/trk/package/bin/
+        __DIR__ . '/../../vendor/autoload.php',       // Typical root dev
+        __DIR__ . '/../../../../vendor/autoload.php', // If symlinked and 3 dirs deep
+    ];
+
+    foreach ($candidates as $candidate) {
+        if (file_exists($candidate)) {
+            $autoloader = $candidate;
+            break;
+        }
+    }
+}
+
+if (!$autoloader || !file_exists($autoloader)) {
     echo "Error: Could not locate composer autoloader.\n";
     exit(1);
 }
@@ -169,6 +197,15 @@ $application->addCommands([
     new LogsClearCommand(),
     new CacheWireClearCommand(),
     new CacheClearCommand(),
+    // Migration Commands
+    new MakeMigrationCommand(),
+    new MigrateCommand(),
+    new MigrateRollbackCommand(),
+    new MigrateResetCommand(),
+    new MigrateRefreshCommand(),
+    new MigrateFreshCommand(),
+    new MigrateStatusCommand(),
+    new MigrateInstallCommand(),
 ]);
 
 /**

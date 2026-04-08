@@ -1,79 +1,122 @@
-name: "processwire-console: Release"
+name: "Tag, Release"
 on:
   push:
-    tags:
-      - "processwire-console-v*"
-      - "console-v*"
-      - "v*"
+    branches:
+      - main
+    paths:
+      - "composer.json"
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Release tag (e.g., v1.2.3 or console-v1.2.3)"
-        required: true
-      notes:
-        description: "Optional release notes (appended to auto-generated notes)"
-        required: false
+
 jobs:
-  build_and_release:
+  tag_and_release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: Resolve package directory
-        id: pkgdir
-        shell: bash
+
+      - name: Configure Git User
         run: |
-          if [ -d "packages/processwire-console" ]; then
-            echo "path=packages/processwire-console" >> "$GITHUB_OUTPUT"
-          else
-            echo "path=." >> "$GITHUB_OUTPUT"
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Extract version from composer.json
+        id: get_version
+        run: |
+          VERSION=$(php -r "echo json_decode(file_get_contents('composer.json'))->version ?? '';")
+
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not find 'version' field in composer.json"
+            exit 1
           fi
 
-      - name: Set up PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.3"
-          tools: composer:v2
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Validate composer (package)
-        working-directory: ${{ steps.pkgdir.outputs.path }}
-        run: composer validate --strict
-
-      - name: Install dependencies (no-dev)
-        working-directory: ${{ steps.pkgdir.outputs.path }}
-        run: composer install --no-interaction --no-progress --no-suggest --no-dev -o
-
-      - name: PHP syntax check
-        working-directory: ${{ steps.pkgdir.outputs.path }}
+      - name: Check if tag exists
+        id: check_tag
         run: |
-          find src -type f -name '*.php' -print0 | xargs -0 -n1 php -l
-
-      - name: Determine tag
-        id: meta
-        shell: bash
-        run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.version }}"
+          TAG="v${{ steps.get_version.outputs.version }}"
+          if git ls-remote --tags origin | grep -q "refs/tags/$TAG"; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag $TAG already exists on remote. Skipping release."
           else
-            TAG="${GITHUB_REF_NAME}"
+            echo "exists=false" >> $GITHUB_OUTPUT
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Create Git tag (manual dispatch only)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        run: |
-          git tag "${{ steps.meta.outputs.tag }}"
-          git push origin "${{ steps.meta.outputs.tag }}"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          generate_release_notes: true
-          body: ${{ inputs.notes }}
+      - name: Create Git Tag and GitHub Release
+        if: steps.check_tag.outputs.exists == 'false'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.get_version.outputs.version }}"
+          REPO=${{ github.repository }}
+          echo "Generated Tag: $TAG"
+          git tag $TAG
+          git push origin $TAG
+
+          # Custom Release Notes Generator
+          echo "## What's Changed" > release_notes.md
+          echo "" >> release_notes.md
+
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            COMMITS=$(git log --format="%H" $PREV_TAG..HEAD)
+            COMPARE_URL="https://github.com/$REPO/compare/$PREV_TAG...$TAG"
+          else
+            COMMITS=$(git log --format="%H" HEAD)
+            COMPARE_URL="https://github.com/$REPO/commits/$TAG"
+          fi
+
+          SEEN_AUTHORS=()
+          CONTRIBUTORS_HTML=""
+
+          for SHA in $COMMITS; do
+             TITLE=$(git log --format="%s" -n 1 $SHA)
+             SHORT_SHA=$(git rev-parse --short $SHA)
+             
+             LOGIN=$(gh api repos/$REPO/commits/$SHA --jq '.author.login // empty' 2>/dev/null || echo "")
+             if [ -z "$LOGIN" ]; then
+                LOGIN=$(git log --format="%an" -n 1 $SHA)
+             fi
+             AVATAR=$(gh api repos/$REPO/commits/$SHA --jq '.author.avatar_url // empty' 2>/dev/null || echo "")
+             
+             if [[ "$LOGIN" == *" "* ]]; then
+               echo "* $TITLE by **$LOGIN** in $SHORT_SHA" >> release_notes.md
+             else
+               echo "* $TITLE by @$LOGIN in $SHORT_SHA" >> release_notes.md
+             fi
+             
+             # Check if seen
+             SEEN=false
+             for SA in "${SEEN_AUTHORS[@]}"; do
+                if [ "$SA" == "$LOGIN" ]; then
+                   SEEN=true
+                   break
+                fi
+             done
+             
+             if [ "$SEEN" = false ]; then
+                SEEN_AUTHORS+=("$LOGIN")
+                
+                if [ -n "$AVATAR" ]; then
+                   ITEM="<img src=\"$AVATAR\" width=\"24\" height=\"24\" style=\"border-radius: 50%; vertical-align: middle;\" alt=\"\"> $LOGIN"
+                else
+                   ITEM="$LOGIN"
+                fi
+                
+                if [ -z "$CONTRIBUTORS_HTML" ]; then
+                   CONTRIBUTORS_HTML="$ITEM"
+                else
+                   CONTRIBUTORS_HTML="$CONTRIBUTORS_HTML, $ITEM"
+                fi
+             fi
+          done
+
+          echo "" >> release_notes.md
+          echo "**Full Changelog**: $COMPARE_URL" >> release_notes.md
+
+          gh release create $TAG -F release_notes.md --title "$TAG"

@@ -68,7 +68,7 @@ final class FieldUpdateCommand extends Command
             try {
                 $field->set($k, $v);
             } catch (\Throwable $e) {
-                // ignore invalid keys
+                $io->warning("Property '{$k}': " . $e->getMessage());
             }
         }
         $field->save();

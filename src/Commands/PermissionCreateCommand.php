@@ -27,7 +27,8 @@ final class PermissionCreateCommand extends Command
         $name = $input->getArgument('name');
         $title = $input->getArgument('title');
 
-        if (\ProcessWire\wire('permissions')->get($name)->id) {
+        $existing = \ProcessWire\wire('permissions')->get($name);
+        if ($existing && $existing->id) {
             $io->error("Permission '{$name}' already exists.");
             return Command::FAILURE;
         }

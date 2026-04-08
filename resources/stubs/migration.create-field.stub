@@ -1,0 +1,39 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+return new class {
+
+    public function up(): void
+    {
+        $fields = wire('fields');
+
+        $field = new Field();
+        $field->type = wire('modules')->get('{{fieldtype}}');
+        $field->name = '{{name}}';
+        $field->label = '{{label}}';
+        $fields->save($field);
+    }
+
+    public function down(): void
+    {
+        $field = wire('fields')->get('{{name}}');
+        if (!$field || !$field->id) {
+            return;
+        }
+
+        // Guard: field must not be attached to any template
+        $fieldgroups = $field->getFieldgroups();
+        if ($fieldgroups->count() > 0) {
+            $names = $fieldgroups->implode(', ', 'name');
+            throw new WireException(
+                "Cannot delete field '{{name}}' — it is attached to template(s): {$names}. "
+                . "Create a separate migration to detach it first."
+            );
+        }
+
+        wire('fields')->delete($field);
+    }
+};

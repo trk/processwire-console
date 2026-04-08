@@ -27,7 +27,7 @@ final class FieldDeleteCommand extends Command
 
         $field = \ProcessWire\wire('fields')->get($name);
 
-        if (!$field->id) {
+        if (!$field || !$field->id) {
             $io->error("Field '{$name}' not found.");
             return Command::FAILURE;
         }

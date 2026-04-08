@@ -41,7 +41,8 @@ final class TemplateRenameCommand extends Command
             $io->error("Template not found: {$old}");
             return Command::FAILURE;
         }
-        if ($templates->get($new)->id) {
+        $existingNew = $templates->get($new);
+        if ($existingNew && $existingNew->id) {
             $io->error("A template named '{$new}' already exists.");
             return Command::FAILURE;
         }

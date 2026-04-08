@@ -27,7 +27,8 @@ final class MakeFieldCommand extends Command
         $type = $input->getArgument('type');
         $name = $input->getArgument('name');
 
-        if (\ProcessWire\wire('fields')->get($name)->id) {
+        $existing = \ProcessWire\wire('fields')->get($name);
+        if ($existing && $existing->id) {
             $io->error("Field '{$name}' already exists.");
             return Command::FAILURE;
         }

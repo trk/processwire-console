@@ -59,23 +59,25 @@ final class DbRestoreCommand extends Command
         }
 
         $db = \ProcessWire\wire('database');
-        $sql = file_get_contents($file) ?: '';
-        if ($sql === '') {
-            $io->error("SQL file is empty.");
-            return Command::FAILURE;
-        }
 
         try {
-            $db->beginTransaction();
-            $statements = preg_split('/;\s*(\r?\n)+/', $sql);
-            foreach ($statements as $stmt) {
-                $stmt = trim($stmt);
-                if ($stmt === '' || str_starts_with($stmt, '--') || str_starts_with($stmt, '/*')) continue;
-                $db->exec($stmt);
+            $backup = $db->backups();
+            if (!$backup) {
+                $io->error("Database backup tool not available.");
+                return Command::FAILURE;
             }
-            $db->commit();
+            $result = $backup->restore($file);
+            if (!$result) {
+                $msg = "Restore returned no result — check the SQL file.";
+                $errors = $backup->errors();
+                if ($errors) {
+                    $msg .= "\n" . implode("\n", $errors);
+                }
+                if ($asJson) $output->writeln(json_encode(['ok' => false, 'error' => ['code' => 'RESTORE_FAILED', 'message' => $msg]], JSON_UNESCAPED_SLASHES));
+                else $io->error($msg);
+                return Command::FAILURE;
+            }
         } catch (\Throwable $e) {
-            if ($db->inTransaction()) $db->rollBack();
             $msg = "Restore failed: " . $e->getMessage();
             if ($asJson) $output->writeln(json_encode(['ok' => false, 'error' => ['code' => 'RESTORE_FAILED', 'message' => $msg]], JSON_UNESCAPED_SLASHES));
             else $io->error($msg);

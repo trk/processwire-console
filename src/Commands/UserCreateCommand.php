@@ -86,7 +86,8 @@ final class UserCreateCommand extends Command
         $email = $emailSan;
         $password = $passOpt ?: bin2hex(random_bytes(8));
 
-        if (\ProcessWire\wire('users')->get($username)->id) {
+        $existing = \ProcessWire\wire('users')->get($username);
+        if ($existing && $existing->id) {
             $io->error("User '{$username}' already exists.");
             return Command::FAILURE;
         }

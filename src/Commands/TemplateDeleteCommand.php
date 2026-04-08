@@ -27,7 +27,7 @@ final class TemplateDeleteCommand extends Command
 
         $template = \ProcessWire\wire('templates')->get($name);
 
-        if (!$template->id) {
+        if (!$template || !$template->id) {
             $io->error("Template '{$name}' not found.");
             return Command::FAILURE;
         }

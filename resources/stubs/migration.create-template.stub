@@ -1,0 +1,67 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+return new class {
+
+    private string $templateName = '{{name}}';
+
+    public function up(): void
+    {
+        $templates = wire('templates');
+        $fieldgroups = wire('fieldgroups');
+
+        // Create fieldgroup
+        $fg = new Fieldgroup();
+        $fg->name = $this->templateName;
+        $fg->add(wire('fields')->get('title'));
+        $fieldgroups->save($fg);
+
+        // Create template
+        $template = new Template();
+        $template->name = $this->templateName;
+        $template->fieldgroup = $fg;
+        $template->label = '{{label}}';
+        $templates->save($template);
+
+        // Create template file
+        $templateFile = wire('config')->paths->templates . $this->templateName . '.php';
+        if (!file_exists($templateFile)) {
+            file_put_contents($templateFile, "<?php\n\nnamespace ProcessWire;\n\n/** @var Page \$page */\n?>\n<h1><?= \$page->title ?></h1>\n");
+        }
+    }
+
+    public function down(): void
+    {
+        $template = wire('templates')->get($this->templateName);
+        if (!$template || !$template->id) {
+            return;
+        }
+
+        // Guard: template must not have any pages using it
+        $pageCount = wire('pages')->count("template={$this->templateName}, include=all");
+        if ($pageCount > 0) {
+            throw new WireException(
+                "Cannot delete template '{$this->templateName}' — {$pageCount} page(s) are using it. "
+                . "Create a separate migration to delete those pages first."
+            );
+        }
+
+        // Remove template file
+        $templateFile = wire('config')->paths->templates . $this->templateName . '.php';
+        if (file_exists($templateFile)) {
+            unlink($templateFile);
+        }
+
+        // Delete template (also deletes fieldgroup)
+        wire('templates')->delete($template);
+
+        // Cleanup orphan fieldgroup (if not deleted with template)
+        $fg = wire('fieldgroups')->get($this->templateName);
+        if ($fg && $fg->id) {
+            wire('fieldgroups')->delete($fg);
+        }
+    }
+};

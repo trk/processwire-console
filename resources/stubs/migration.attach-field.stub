@@ -1,0 +1,54 @@
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+return new class {
+
+    private string $templateName = '{{template}}';
+    private string $fieldName = '{{field}}';
+
+    public function up(): void
+    {
+        $template = wire('templates')->get($this->templateName);
+        $field = wire('fields')->get($this->fieldName);
+
+        if (!$template || !$template->id) {
+            throw new \RuntimeException("Template '{$this->templateName}' not found.");
+        }
+        if (!$field || !$field->id) {
+            throw new \RuntimeException("Field '{$this->fieldName}' not found.");
+        }
+
+        $template->fieldgroup->add($field);
+        $template->fieldgroup->save();
+    }
+
+    public function down(): void
+    {
+        $template = wire('templates')->get($this->templateName);
+        $field = wire('fields')->get($this->fieldName);
+
+        if (!$template || !$template->id || !$field || !$field->id) {
+            return;
+        }
+
+        // Guard: detaching a field from a template DELETES all data
+        // stored in that field for pages using this template.
+        // Check if any pages have data in this field before removing.
+        $pagesWithData = wire('pages')->count(
+            "template={$this->templateName}, {$this->fieldName}!='', include=all"
+        );
+        if ($pagesWithData > 0) {
+            throw new WireException(
+                "Cannot detach field '{$this->fieldName}' from template '{$this->templateName}' — "
+                . "{$pagesWithData} page(s) have data in this field. "
+                . "Data would be permanently lost. Clear the field data first or handle manually."
+            );
+        }
+
+        $template->fieldgroup->remove($field);
+        $template->fieldgroup->save();
+    }
+};

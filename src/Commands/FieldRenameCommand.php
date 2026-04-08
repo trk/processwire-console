@@ -41,7 +41,8 @@ final class FieldRenameCommand extends Command
             $io->error("Field not found: {$old}");
             return Command::FAILURE;
         }
-        if ($fields->get($new)->id) {
+        $existingNew = $fields->get($new);
+        if ($existingNew && $existingNew->id) {
             $io->error("A field named '{$new}' already exists.");
             return Command::FAILURE;
         }
