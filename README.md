@@ -21,6 +21,7 @@
 
 - [Why ProcessWire Console?](#why-processwire-console)
 - [Installation](#installation)
+- [Shell Alias (Recommended)](#shell-alias-recommended)
 - [Quick Start](#quick-start)
 - [Command Reference](#command-reference)
   - [Pages](#pages)
@@ -85,6 +86,57 @@ php vendor/bin/wire list
 ```
 
 If the database is not configured, the CLI will still start and display command help. Full functionality requires a working ProcessWire installation with database access.
+
+---
+
+## Shell Alias (Recommended)
+
+Typing `php vendor/bin/wire` every time is tedious. Set up a shell alias to use just `wire`:
+
+### macOS / Linux (Bash/Zsh)
+
+Add this line to your shell config file (`~/.zshrc`, `~/.bashrc`, or `~/.bash_profile`):
+
+```bash
+# Add ProcessWire Console alias
+echo 'alias wire="php vendor/bin/wire"' >> ~/.zshrc && source ~/.zshrc
+```
+
+> For Bash users, replace `~/.zshrc` with `~/.bashrc`.
+
+### Windows (PowerShell)
+
+Run in PowerShell to add a persistent alias:
+
+```powershell
+# Create profile if it doesn't exist, then add alias
+if (!(Test-Path $PROFILE)) { New-Item -Path $PROFILE -Force }
+Add-Content $PROFILE 'function wire { php vendor/bin/wire @args }'
+. $PROFILE
+```
+
+### Windows (CMD)
+
+Create a `wire.bat` file in a directory that's in your PATH:
+
+```cmd
+@echo off
+php vendor/bin/wire %*
+```
+
+### After Setup
+
+Now you can use `wire` directly:
+
+```bash
+# Before
+php vendor/bin/wire page:list --template=basic-page
+
+# After ✨
+wire page:list --template=basic-page
+wire user:create -i
+wire migrate:status
+```
 
 ---
 
