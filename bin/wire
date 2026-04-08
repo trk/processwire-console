@@ -4,8 +4,7 @@
 declare(strict_types=1);
 
 use Symfony\Component\Console\Application;
-use Totoglu\ProcessWire\Console\Commands\MakeTemplateCommand;
-use Totoglu\ProcessWire\Console\Commands\MakeFieldCommand;
+
 use Totoglu\ProcessWire\Console\Commands\MakeModuleCommand;
 use Totoglu\ProcessWire\Console\Commands\UserCreateCommand;
 use Totoglu\ProcessWire\Console\Commands\UserListCommand;
@@ -15,8 +14,7 @@ use Totoglu\ProcessWire\Console\Commands\ModuleListCommand;
 use Totoglu\ProcessWire\Console\Commands\ModuleInstallCommand;
 use Totoglu\ProcessWire\Console\Commands\ModuleUninstallCommand;
 use Totoglu\ProcessWire\Console\Commands\ModuleRefreshCommand;
-use Totoglu\ProcessWire\Console\Commands\ModuleEnableCommand;
-use Totoglu\ProcessWire\Console\Commands\ModuleDisableCommand;
+
 use Totoglu\ProcessWire\Console\Commands\ModuleUpgradeCommand;
 use Totoglu\ProcessWire\Console\Commands\TinkerCommand;
 use Totoglu\ProcessWire\Console\Commands\DbBackupCommand;
@@ -144,8 +142,7 @@ $application = new Application('ProcessWire Command Line Interface', '1.0.0');
 
 // Core Commands
 $application->addCommands([
-    new MakeTemplateCommand(),
-    new MakeFieldCommand(),
+
     new MakeModuleCommand(),
     new UserCreateCommand(),
     new UserListCommand(),
@@ -184,8 +181,7 @@ $application->addCommands([
     new ModuleInstallCommand(),
     new ModuleUninstallCommand(),
     new ModuleRefreshCommand(),
-    new ModuleEnableCommand(),
-    new ModuleDisableCommand(),
+
     new ModuleUpgradeCommand(),
     new TinkerCommand(),
     new DbBackupCommand(),

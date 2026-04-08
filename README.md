@@ -5,7 +5,7 @@
 
 <p align="center">
   A Laravel Artisan–inspired CLI for <a href="https://processwire.com">ProcessWire CMS/CMF</a>.<br>
-  61 production-ready commands · JSON output for AI agents · Composer-driven extensibility
+  57 production-ready commands · JSON output for AI agents · Composer-driven extensibility
 </p>
 
 <p align="center">
@@ -53,14 +53,14 @@ ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills th
 | Content (Pages) | 8 commands | Eloquent operations |
 | Schema (Fields) | 7 commands | Migrations |
 | Schema (Templates) | 6 commands | Model schemas |
-| Modules | 7 commands | Package management, `vendor:publish` |
+| Modules | 5 commands | Package management, `vendor:publish` |
 | Users & RBAC | 11 commands | Policies, Gates |
 | Cache & Logs | 5 commands | `cache:clear`, `log:clear` |
 | Database | 4 commands | `db:seed`, `backup:run` |
-| Scaffolding | 4 commands | `make:*` |
+| Scaffolding | 2 commands | `make:*` |
 | Migrations | 8 commands | `migrate`, `migrate:rollback`, `migrate:status` |
 | Runtime | 2 commands | `tinker`, `list` |
-| **Total** | **61 commands** | |
+| **Total** | **57 commands** | |
 
 Every command supports `--json` for machine-readable output, `--dry-run` for safe previews, and `--force` for non-interactive scripting.
 
@@ -416,15 +416,7 @@ php vendor/bin/wire module:install --name=ModuleName
 php vendor/bin/wire module:uninstall --name=ModuleName --force
 ```
 
-#### `module:enable` / `module:disable`
 
-```bash
-php vendor/bin/wire module:enable --name=ModuleName
-php vendor/bin/wire module:disable --name=ModuleName
-
-# Dry-run to preview
-php vendor/bin/wire module:disable --name=ModuleName --dry-run
-```
 
 #### `module:refresh`
 
@@ -608,25 +600,7 @@ php vendor/bin/wire backup:purge --keep=3 --force
 
 ### Scaffolding
 
-#### `make:template`
 
-Create a new ProcessWire template with an optional template file and fields.
-
-```bash
-# Create a template (interactive — choose fields)
-php vendor/bin/wire make:template blog-post
-
-# Create with a label
-php vendor/bin/wire make:template blog-post --label="Blog Post"
-```
-
-#### `make:field`
-
-Create a new ProcessWire field.
-
-```bash
-php vendor/bin/wire make:field sidebar_content --type=FieldtypeTextarea --label="Sidebar Content"
-```
 
 #### `make:module`
 
@@ -973,7 +947,7 @@ Commands that create or modify data support interactive prompts powered by [Lara
 
 - **`page:create -i`** — Select template from a list, enter parent path, fill template fields interactively
 - **`user:create`** — Prompts for username, email, password (with confirmation), and role selection
-- **`make:template`** — Multi-select fields to attach to the new template
+
 
 Interactive prompts are automatically disabled when:
 - The `--json` flag is present
@@ -1084,7 +1058,7 @@ processwire-console/
 ├── bin/
 │   └── wire                    # CLI entry point (bootstrap + command registration)
 ├── src/
-│   ├── Commands/               # 61 command classes
+│   ├── Commands/               # 57 command classes
 │   │   ├── Page*.php           # 8 page management commands
 │   │   ├── Field*.php          # 7 field management commands
 │   │   ├── Template*.php       # 6 template management commands
@@ -1124,7 +1098,7 @@ processwire-console/
 1. Locate Composer autoloader (supports standard and symlinked setups)
 2. Walk upward to find `wire/core/ProcessWire.php`
 3. Boot ProcessWire with database config (graceful fallback if unavailable)
-4. Register 61 built-in commands (including 8 migration commands)
+4. Register 57 built-in commands (including 8 migration commands)
 5. Auto-load `site/Commands/*.php`
 6. Discover commands from Composer packages (`extra.processwire-console.commands`)
 7. Run the Symfony Console application
