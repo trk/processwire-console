@@ -1,6 +1,6 @@
 {
   "name": "trk/processwire-console",
-  "description": "A Laravel-style CLI tool for ProcessWire CMS.",
+  "description": "A professional CLI tool for ProcessWire CMS.",
   "version": "0.2.0",
   "type": "library",
   "license": "MIT",

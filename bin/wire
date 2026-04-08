@@ -229,7 +229,7 @@ if ($wire instanceof \ProcessWire\ProcessWire) {
 }
 
 /**
- * External Package Commands (Composer-driven, Laravel-style)
+ * External Package Commands (Composer-driven auto-discovery)
  * Reads vendor/composer/installed.json for packages that declare:
  *   "extra": { "processwire-console": { "commands": ["FQCN", ...] } }
  * Additionally, reads root composer.json "repositories" of type "path"
