@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  A Laravel Artisan–inspired CLI for <a href="https://processwire.com">ProcessWire CMS/CMF</a>.<br>
+  A professional CLI for <a href="https://processwire.com">ProcessWire CMS/CMF</a>.<br>
   57 production-ready commands · JSON output for AI agents · Composer-driven extensibility
 </p>
 
@@ -47,20 +47,20 @@
 
 ## Why ProcessWire Console?
 
-ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills that gap by providing **Laravel Artisan-level** command-line tooling purpose-built for ProcessWire's architecture:
+ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills that gap with **57 production-ready commands** purpose-built for ProcessWire's architecture:
 
-| Domain | Commands | Artisan Equivalent |
-|--------|----------|--------------------|
-| Content (Pages) | 8 commands | Eloquent operations |
-| Schema (Fields) | 7 commands | Migrations |
-| Schema (Templates) | 6 commands | Model schemas |
-| Modules | 5 commands | Package management, `vendor:publish` |
-| Users & RBAC | 11 commands | Policies, Gates |
-| Cache & Logs | 5 commands | `cache:clear`, `log:clear` |
-| Database | 4 commands | `db:seed`, `backup:run` |
-| Scaffolding | 2 commands | `make:*` |
-| Migrations | 8 commands | `migrate`, `migrate:rollback`, `migrate:status` |
-| Runtime | 2 commands | `tinker`, `list` |
+| Domain | Commands | Description |
+|--------|----------|-------------|
+| Content (Pages) | 8 commands | Create, update, publish, move, trash, restore |
+| Schema (Fields) | 7 commands | List, info, create, update, rename, attach, detach |
+| Schema (Templates) | 6 commands | List, info, create, update, rename, reorder fields |
+| Modules | 5 commands | List, install, uninstall, refresh, upgrade |
+| Users & RBAC | 11 commands | Users, roles, permissions management |
+| Cache & Logs | 5 commands | Clear caches, tail/clear log files |
+| Database | 4 commands | Backup, restore, list backups, purge old backups |
+| Scaffolding | 2 commands | Generate modules and migrations |
+| Migrations | 8 commands | Run, rollback, reset, refresh, fresh, status |
+| Runtime | 2 commands | Interactive REPL, command listing |
 | **Total** | **57 commands** | |
 
 Every command supports `--json` for machine-readable output, `--dry-run` for safe previews, and `--force` for non-interactive scripting.
@@ -703,7 +703,7 @@ php vendor/bin/wire make:migration add_body_field --type=create-field --field=bo
 
 ### Migrations
 
-A complete Laravel-grade migration system for ProcessWire — schema versioning with up/down methods, batch tracking, rollback support, and 7 typed stubs for common PW operations.
+A complete migration system for ProcessWire — schema versioning with up/down methods, batch tracking, rollback support, and 7 typed stubs for common PW operations.
 
 Migrations live in `site/migrations/` and are tracked in the `wire_migrations` database table (auto-created on first run).
 
@@ -788,7 +788,7 @@ All stubs include **precondition guards** in `down()` that throw clear errors in
 | `create-role` | Users assigned this role? | `"Cannot delete — remove from users first"` |
 | `install-module` | Other modules depend on it? | `"Cannot uninstall — dependencies exist"` |
 
-> **Design philosophy:** Stubs never auto-delete user content or cascade-remove dependencies. They fail loudly so you can write the correct cleanup migration yourself. This matches Laravel's behavior where `Schema::dropIfExists()` fails on foreign key constraints — the user resolves it.
+> **Design philosophy:** Stubs never auto-delete user content or cascade-remove dependencies. They fail loudly so you can write the correct cleanup migration yourself.
 
 Each migration file returns an anonymous class with `up()` and `down()` methods:
 
@@ -929,7 +929,7 @@ php vendor/bin/wire migrate:install
 
 ### Tinker (REPL)
 
-An interactive ProcessWire PHP REPL, similar to Laravel's `tinker`.
+An interactive ProcessWire PHP REPL for quick testing and debugging.
 
 ```bash
 php vendor/bin/wire tinker
@@ -1042,7 +1042,7 @@ class SyncProductsCommand extends Command
 }
 ```
 
-### Method 2: Composer Package Discovery (Laravel-style)
+### Method 2: Composer Package Discovery
 
 Register commands in your package's `composer.json`:
 
@@ -1065,7 +1065,7 @@ Register commands in your package's `composer.json`:
 }
 ```
 
-The console engine reads `vendor/composer/installed.json` **and** root `composer.json` path repositories to discover commands automatically — exactly like Laravel's package auto-discovery.
+The console engine reads `vendor/composer/installed.json` **and** root `composer.json` path repositories to discover commands automatically.
 
 ---
 
