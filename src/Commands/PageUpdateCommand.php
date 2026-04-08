@@ -8,22 +8,28 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\warning;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class PageUpdateCommand extends Command
 {
+    use InteractWithProcessWire;
+
     protected function configure(): void
     {
         $this
             ->setName('page:update')
             ->setDescription('Update fields and/or status on a page.')
-            ->addOption('id', null, InputOption::VALUE_REQUIRED, 'Page ID')
-            ->addOption('path', null, InputOption::VALUE_REQUIRED, 'Page path')
-            ->addOption('set', null, InputOption::VALUE_REQUIRED, 'Comma-separated key=value pairs (e.g., "title=Hello,headline=Hi")')
-            ->addOption('status', null, InputOption::VALUE_REQUIRED, 'Optional status: publish|unpublish|hide|show|lock|unlock')
+            ->addOption('id', null, InputOption::VALUE_OPTIONAL, 'Page ID')
+            ->addOption('path', null, InputOption::VALUE_OPTIONAL, 'Page path')
+            ->addOption('set', null, InputOption::VALUE_OPTIONAL, 'Comma-separated key=value pairs (e.g., "title=Hello,headline=Hi")')
+            ->addOption('status', null, InputOption::VALUE_OPTIONAL, 'Optional status: publish|unpublish|hide|show|lock|unlock')
             ->addOption('interactive', 'i', InputOption::VALUE_NONE, 'Prompt for page and field values')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
             ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
@@ -31,7 +37,6 @@ final class PageUpdateCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $id = $input->getOption('id');
         $path = $input->getOption('path');
         $set = $input->getOption('set') ? (string)$input->getOption('set') : '';
@@ -41,23 +46,19 @@ final class PageUpdateCommand extends Command
         $asJson = (bool)$input->getOption('json');
 
         if (($wantInteractive && $input->isInteractive() && !$asJson) && (!$id && !$path)) {
-            $pp = text('Page ID or path');
-            if (is_numeric($pp)) {
-                $id = (string)$pp;
-            } else {
-                $path = $pp;
-            }
+            $path = (string)$this->searchPage('Select page to update');
+            if ($path === '' || str_starts_with($path, 'No matching')) return Command::SUCCESS;
         }
 
         if (!$id && !$path) {
-            $io->error("Provide --id or --path.");
+            error("Provide --id or --path.");
             return Command::FAILURE;
         }
 
         $pages = \ProcessWire\wire('pages');
         $page = $id ? $pages->get((int)$id) : $pages->get((string)$path);
         if (!$page || !$page->id) {
-            $io->error("Page not found.");
+            error("Page not found.");
             return Command::FAILURE;
         }
 
@@ -110,7 +111,7 @@ final class PageUpdateCommand extends Command
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->note("Dry-run: would update page #{$page->id} with: " . json_encode($changes) . " and status '{$statusOp}'.");
+                note("Dry-run: would update page #{$page->id} with: " . json_encode($changes) . " and status '{$statusOp}'.");
             }
             return Command::SUCCESS;
         }
@@ -119,7 +120,7 @@ final class PageUpdateCommand extends Command
             try {
                 $page->set($k, $v);
             } catch (\Throwable $e) {
-                $io->warning("Field '{$k}': " . $e->getMessage());
+                warning("Field '{$k}': " . $e->getMessage());
             }
         }
 
@@ -151,7 +152,7 @@ final class PageUpdateCommand extends Command
         if ($asJson) {
             $output->writeln(json_encode(['ok' => true, 'data' => $result + ['saved' => true]], JSON_UNESCAPED_SLASHES));
         } else {
-            $io->success("Updated page #{$page->id}.");
+            info("Updated page #{$page->id}.");
         }
         return Command::SUCCESS;
     }

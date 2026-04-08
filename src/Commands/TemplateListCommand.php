@@ -7,9 +7,10 @@ namespace Totoglu\Console\Commands;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\warning;
+use function Laravel\Prompts\table;
+use function Laravel\Prompts\note;
 
 final class TemplateListCommand extends Command
 {
@@ -25,7 +26,6 @@ final class TemplateListCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $search = $input->getOption('search');
         $tag = $input->getOption('tag');
 
@@ -41,7 +41,7 @@ final class TemplateListCommand extends Command
         }
 
         if (empty($filtered)) {
-            $io->warning("No templates found matching criteria.");
+            warning("No templates found matching criteria.");
             return Command::SUCCESS;
         }
 
@@ -64,24 +64,28 @@ final class TemplateListCommand extends Command
             }
             $output->writeln(json_encode(['ok' => true, 'data' => ['items' => $items, 'total' => count($filtered)]], JSON_UNESCAPED_SLASHES));
         } else {
-            $table = new Table($output);
-            $table->setHeaders(['ID', 'Name', 'Tag', 'Fields', 'Pages', 'Flags']);
+            $rows = [];
             foreach ($filtered as $template) {
                 $flags = [];
-                if ($template->flags & \ProcessWire\Template::flagSystem) $flags[] = '<fg=red>sys</>';
+                if ($template->flags & \ProcessWire\Template::flagSystem) $flags[] = 'sys';
                 $fieldCount = count($template->fields ?: []);
                 $pageCount = \ProcessWire\wire('pages')->count("template={$template->name}, include=all");
-                $table->addRow([
+                $rows[] = [
                     $template->id,
                     $template->name,
                     $template->tags ?: '-',
                     $fieldCount,
                     $pageCount,
                     implode('|', $flags) ?: '-'
-                ]);
+                ];
             }
-            $table->render();
-            $io->note("Total templates: " . count($filtered));
+            
+            table(
+                headers: ['ID', 'Name', 'Tag', 'Fields', 'Pages', 'Flags'],
+                rows: $rows
+            );
+            
+            note("Total templates: " . count($filtered));
         }
 
         return Command::SUCCESS;

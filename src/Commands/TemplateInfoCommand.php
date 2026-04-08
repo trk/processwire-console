@@ -8,31 +8,40 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\table;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class TemplateInfoCommand extends Command
 {
+    use InteractWithProcessWire;
     protected function configure(): void
     {
         $this
             ->setName('template:info')
             ->setDescription('Show detailed information about a template.')
-            ->addArgument('name', InputArgument::REQUIRED, 'The name of the template');
+            ->addArgument('name', InputArgument::OPTIONAL, 'The name of the template');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $name = $input->getArgument('name');
+        
+        if (!$name) {
+            $name = $this->searchTemplate('Select the template to view info');
+            if ($name === 'No matching templates found') return Command::SUCCESS;
+        }
 
         $template = \ProcessWire\wire('templates')->get($name);
 
         if (!$template || !$template->id) {
-            $io->error("Template '{$name}' not found.");
+            error("Template '{$name}' not found.");
             return Command::FAILURE;
         }
 
-        $io->title("Template Structure: {$template->name}");
+        info("Template Structure: {$template->name}");
 
         $general = [
             "ID" => $template->id,
@@ -44,23 +53,38 @@ final class TemplateInfoCommand extends Command
             "Pages" => \ProcessWire\wire('pages')->count("template={$template->name}, include=all"),
         ];
 
-        $io->definitionList(...array_map(fn($k, $v) => [$k => $v], array_keys($general), array_values($general)));
+        table(
+            headers: ['Property', 'Value'],
+            rows: array_map(fn($k, $v) => [$k, $v], array_keys($general), array_values($general))
+        );
 
         // Fields
-        $io->section("Fields (Order)");
+        info("Fields (Order)");
         $fieldList = [];
         foreach ($template->fields as $f) {
-            $fieldList[] = "{$f->name} ({$f->type->className()})";
+            $fieldList[] = [$f->name, $f->type->className()];
         }
-        $io->listing($fieldList ?: ['No fields defined']);
+        if ($fieldList) {
+            table(
+                headers: ['Name', 'Type'],
+                rows: $fieldList
+            );
+        } else {
+            note("No fields defined");
+        }
 
         // Access (Permissions)
-        $io->section("Access Control");
+        info("Access Control");
         if ($template->useRoles) {
-            $io->text("View Roles: " . implode(', ', array_map(fn($r) => $r->name, iterator_to_array($template->roles))));
-            $io->text("Edit Roles: " . implode(', ', array_map(fn($r) => $r->name, iterator_to_array($template->editRoles))));
+            $accessRows = [];
+            $accessRows[] = ['View Roles', implode(', ', array_map(fn($r) => $r->name, iterator_to_array($template->roles)))];
+            $accessRows[] = ['Edit Roles', implode(', ', array_map(fn($r) => $r->name, iterator_to_array($template->editRoles)))];
+            table(
+                headers: ['Permission', 'Roles'],
+                rows: $accessRows
+            );
         } else {
-            $io->text("Inheriting access from parent.");
+            note("Inheriting access from parent.");
         }
 
         // Advanced
@@ -70,8 +94,8 @@ final class TemplateInfoCommand extends Command
         if ($template->noChildren) $flags[] = 'No Children';
 
         if ($flags) {
-            $io->section("Technical Flags");
-            $io->text(implode(' | ', $flags));
+            info("Technical Flags");
+            note(implode(' | ', $flags));
         }
 
         return Command::SUCCESS;

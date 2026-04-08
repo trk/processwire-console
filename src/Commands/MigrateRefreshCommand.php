@@ -8,7 +8,6 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use Totoglu\Console\Migration\Migrator;
 use Totoglu\Console\Migration\MigrationRepository;
 
@@ -25,13 +24,12 @@ final class MigrateRefreshCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $force = (bool)$input->getOption('force');
         $asJson = (bool)$input->getOption('json');
 
         if (!$force && !$asJson) {
-            if (!$io->confirm('This will rollback ALL migrations and re-run them. Continue?', false)) {
-                $io->note('Aborted.');
+            if (!\Laravel\Prompts\confirm('This will rollback ALL migrations and re-run them. Continue?', default: false)) {
+                \Laravel\Prompts\note('Aborted.');
                 return Command::SUCCESS;
             }
         }
@@ -40,12 +38,14 @@ final class MigrateRefreshCommand extends Command
         $migrator = new Migrator($repository);
 
         // Phase 1: Reset
-        $resetResult = $migrator->reset();
+        $resetResult = $asJson
+            ? $migrator->reset()
+            : \Laravel\Prompts\spin(fn() => $migrator->reset(), 'Rolling back all migrations...');
 
         if (!$asJson && !empty($resetResult['rolledBack'])) {
-            $io->section('Rolling back');
+            \Laravel\Prompts\note('Rolling back');
             foreach ($resetResult['rolledBack'] as $file) {
-                $io->writeln("  <comment>↩</comment> {$file}");
+                \Laravel\Prompts\warning("  ↩ {$file}");
             }
         }
 
@@ -54,19 +54,21 @@ final class MigrateRefreshCommand extends Command
                 $output->writeln(json_encode(['ok' => false, 'data' => ['phase' => 'reset', 'result' => $resetResult]], JSON_UNESCAPED_SLASHES));
             } else {
                 foreach ($resetResult['errors'] as $error) {
-                    $io->error($error);
+                    \Laravel\Prompts\error($error);
                 }
             }
             return Command::FAILURE;
         }
 
         // Phase 2: Migrate
-        $migrateResult = $migrator->runPending();
+        $migrateResult = $asJson
+            ? $migrator->runPending()
+            : \Laravel\Prompts\spin(fn() => $migrator->runPending(), 'Running all migrations...');
 
         if (!$asJson && !empty($migrateResult['applied'])) {
-            $io->section('Migrating');
+            \Laravel\Prompts\note('Migrating');
             foreach ($migrateResult['applied'] as $file) {
-                $io->writeln("  <info>✓</info> {$file}");
+                \Laravel\Prompts\info("  ✓ {$file}");
             }
         }
 
@@ -85,12 +87,12 @@ final class MigrateRefreshCommand extends Command
 
         if (!empty($migrateResult['errors'])) {
             foreach ($migrateResult['errors'] as $error) {
-                $io->error($error);
+                \Laravel\Prompts\error($error);
             }
             return Command::FAILURE;
         }
 
-        $io->success("Refreshed: rolled back " . count($resetResult['rolledBack']) . ", applied " . count($migrateResult['applied']) . " migration(s).");
+        \Laravel\Prompts\info("Refreshed: rolled back " . count($resetResult['rolledBack']) . ", applied " . count($migrateResult['applied']) . " migration(s).");
         return Command::SUCCESS;
     }
 }

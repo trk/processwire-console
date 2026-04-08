@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\table;
+use function Laravel\Prompts\warning;
 
 final class BackupListCommand extends Command
 {
@@ -23,12 +23,11 @@ final class BackupListCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $limit = (int)$input->getOption('limit');
 
         $dir = \ProcessWire\wire('config')->paths->assets . 'backups/database/';
         if (!is_dir($dir)) {
-            $io->warning("Directory not found: {$dir}");
+            warning("Directory not found: {$dir}");
             return Command::SUCCESS;
         }
 
@@ -37,16 +36,20 @@ final class BackupListCommand extends Command
         $files = array_slice($files, 0, $limit);
 
         if (!$files) {
-            $io->warning("No backup files found.");
+            warning("No backup files found.");
             return Command::SUCCESS;
         }
 
-        $table = new Table($output);
-        $table->setHeaders(['File', 'Size (KB)', 'Modified']);
+        $rows = [];
         foreach ($files as $f) {
-            $table->addRow([$f, (int)(filesize($dir . $f) / 1024), date('Y-m-d H:i', (int)filemtime($dir . $f))]);
+            $rows[] = [$f, (int)(filesize($dir . $f) / 1024), date('Y-m-d H:i', (int)filemtime($dir . $f))];
         }
-        $table->render();
+        
+        table(
+            ['File', 'Size (KB)', 'Modified'],
+            $rows
+        );
+        
         return Command::SUCCESS;
     }
 }

@@ -9,10 +9,13 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\multiselect;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\warning;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\table;
 
 final class UserCreateCommand extends Command
 {
@@ -30,7 +33,6 @@ final class UserCreateCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $username = $input->getArgument('username');
         $email = $input->getArgument('email');
         $roles = $input->getOption('role');
@@ -60,13 +62,13 @@ final class UserCreateCommand extends Command
                     $p2 = password('Confirm password', required: true);
                     $attempts = 1;
                     while ($p1 !== $p2 && $attempts < 3) {
-                        $io->error('Passwords do not match.');
+                        error('Passwords do not match.');
                         $p1 = password('Password', required: true);
                         $p2 = password('Confirm password', required: true);
                         $attempts++;
                     }
                     if ($p1 !== $p2) {
-                        $io->error('Password confirmation failed.');
+                        error('Password confirmation failed.');
                         return Command::FAILURE;
                     }
                     $passOpt = $p1;
@@ -74,13 +76,13 @@ final class UserCreateCommand extends Command
             }
         }
         if (!$username || !$email) {
-            $io->error("Provide <username> and <email> or run interactively to enter them.");
+            error("Provide <username> and <email> or run interactively to enter them.");
             return Command::FAILURE;
         }
         $san = \ProcessWire\wire('sanitizer');
         $emailSan = $san->email((string)$email);
         if (!$emailSan || !filter_var($emailSan, FILTER_VALIDATE_EMAIL)) {
-            $io->error("Invalid email address.");
+            error("Invalid email address.");
             return Command::FAILURE;
         }
         $email = $emailSan;
@@ -88,7 +90,7 @@ final class UserCreateCommand extends Command
 
         $existing = \ProcessWire\wire('users')->get($username);
         if ($existing && $existing->id) {
-            $io->error("User '{$username}' already exists.");
+            error("User '{$username}' already exists.");
             return Command::FAILURE;
         }
 
@@ -101,14 +103,14 @@ final class UserCreateCommand extends Command
             if ($role->id) {
                 $u->addRole($role);
             } else {
-                $io->warning("Role '{$roleName}' not found, skipping.");
+                warning("Role '{$roleName}' not found, skipping.");
             }
         }
 
         $u->save();
 
-        $io->success("User '{$username}' created successfully.");
-        $io->table(['Username', 'Email', 'Password', 'Roles'], [
+        info("User '{$username}' created successfully.");
+        table(['Username', 'Email', 'Password', 'Roles'], [
             [$username, $email, $password, implode(', ', $roles)]
         ]);
 

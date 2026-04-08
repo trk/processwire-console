@@ -7,9 +7,10 @@ namespace Totoglu\Console\Commands;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\table;
+use function Laravel\Prompts\warning;
+use function Laravel\Prompts\note;
 
 final class ModuleListCommand extends Command
 {
@@ -26,7 +27,6 @@ final class ModuleListCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $search = $input->getOption('search');
         $coreOnly = $input->getOption('core');
         $siteOnly = $input->getOption('site');
@@ -50,7 +50,7 @@ final class ModuleListCommand extends Command
         }
 
         if (empty($filtered)) {
-            $io->warning("No modules found matching criteria.");
+            warning("No modules found matching criteria.");
             return Command::SUCCESS;
         }
 
@@ -69,22 +69,26 @@ final class ModuleListCommand extends Command
             }
             $output->writeln(json_encode(['ok' => true, 'data' => ['items' => $items, 'total' => count($items)]], JSON_UNESCAPED_SLASHES));
         } else {
-            $table = new Table($output);
-            $table->setHeaders(['Name', 'Title', 'Version', 'Type', 'Summary']);
+            $rows = [];
             foreach ($filtered as $name => $info) {
                 $isCore = str_contains($modules->getModuleFile($name), '/wire/modules/');
-                $type = $isCore ? '<fg=blue>core</>' : '<fg=green>site</>';
+                $type = $isCore ? 'Core' : 'Site';
                 $versionStr = $modules->formatVersion($info['version'] ?? 0);
-                $table->addRow([
+                $rows[] = [
                     $name,
-                    mb_strimwidth($info['title'] ?? '-', 0, 35, '...'),
+                    mb_strimwidth((string)($info['title'] ?? '-'), 0, 35, '...'),
                     $versionStr,
                     $type,
-                    mb_strimwidth($info['summary'] ?? '-', 0, 50, '...')
-                ]);
+                    mb_strimwidth((string)($info['summary'] ?? '-'), 0, 50, '...')
+                ];
             }
-            $table->render();
-            $io->note("Total modules listed: " . count($filtered));
+            
+            table(
+                ['Name', 'Title', 'Version', 'Type', 'Summary'],
+                $rows
+            );
+            
+            note("Total modules listed: " . count($filtered));
         }
 
         return Command::SUCCESS;

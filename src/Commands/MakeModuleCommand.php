@@ -9,7 +9,10 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\text;
 
 final class MakeModuleCommand extends Command
 {
@@ -18,7 +21,7 @@ final class MakeModuleCommand extends Command
         $this
             ->setName('make:module')
             ->setDescription('Scaffold a new ProcessWire module.')
-            ->addArgument('name', InputArgument::REQUIRED, 'The name of the module (e.g. HelloWorld)')
+            ->addArgument('name', InputArgument::OPTIONAL, 'The name of the module (e.g. HelloWorld)')
             ->addOption('type', 't', InputOption::VALUE_REQUIRED, 'Type of module (module, fieldtype, inputfield, process)', 'module')
             ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Module title (defaults to name)')
             ->addOption('summary', null, InputOption::VALUE_REQUIRED, 'Short summary')
@@ -29,8 +32,15 @@ final class MakeModuleCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
-        $name = $input->getArgument('name');
+        $name = $input->getArgument('name') ? (string)$input->getArgument('name') : '';
+        
+        if (!$name) {
+            $name = text(
+                label: 'What is the name of the module? (e.g. HelloWorld)',
+                required: true
+            );
+        }
+
         $type = strtolower($input->getOption('type'));
         $title = $input->getOption('title') ? (string)$input->getOption('title') : (string)$name;
         $summary = $input->getOption('summary') ? (string)$input->getOption('summary') : "A new {$type} module created via wire-cli.";
@@ -42,7 +52,7 @@ final class MakeModuleCommand extends Command
         $modulePath = $modulesPath . $name;
 
         if (is_dir($modulePath)) {
-            $io->error("Module directory '{$name}' already exists.");
+            error("Module directory '{$name}' already exists.");
             return Command::FAILURE;
         }
 
@@ -79,9 +89,9 @@ final class MakeModuleCommand extends Command
         }
 
         file_put_contents($moduleFile, $content);
-        $io->success("{$type} '{$name}' scaffolded from stub at: {$moduleFile}");
+        info("{$type} '{$name}' scaffolded from stub at: {$moduleFile}");
 
-        $io->note("You can now install it via the ProcessWire admin or 'wire module:list'.");
+        note("You can now install it via the ProcessWire admin or 'wire module:list'.");
 
         return Command::SUCCESS;
     }

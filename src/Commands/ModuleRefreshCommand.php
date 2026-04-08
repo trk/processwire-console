@@ -8,7 +8,7 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\info;
 
 final class ModuleRefreshCommand extends Command
 {
@@ -23,7 +23,6 @@ final class ModuleRefreshCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $name = $input->getOption('name') ? (string)$input->getOption('name') : '';
         $asJson = (bool)$input->getOption('json');
 
@@ -39,8 +38,8 @@ final class ModuleRefreshCommand extends Command
         if ($asJson) {
             $output->writeln(json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_SLASHES));
         } else {
-            if ($name) $io->success("Refreshed modules (including '{$name}').");
-            else $io->success("Refreshed all modules.");
+            if ($name) info("Refreshed modules (including '{$name}').");
+            else info("Refreshed all modules.");
         }
         return Command::SUCCESS;
     }

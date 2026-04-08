@@ -9,7 +9,6 @@ use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use Totoglu\Console\Migration\Migrator;
 use Totoglu\Console\Migration\MigrationRepository;
 
@@ -25,7 +24,6 @@ final class MigrateStatusCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $asJson = (bool)$input->getOption('json');
 
         $migrator = new Migrator(new MigrationRepository());
@@ -35,7 +33,7 @@ final class MigrateStatusCommand extends Command
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => true, 'data' => ['items' => [], 'total' => 0]], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->note('No migration files found in ' . $migrator->getMigrationsPath());
+                \Laravel\Prompts\note('No migration files found in ' . $migrator->getMigrationsPath());
             }
             return Command::SUCCESS;
         }
@@ -45,19 +43,17 @@ final class MigrateStatusCommand extends Command
             return Command::SUCCESS;
         }
 
-        $table = new Table($output);
-        $table->setHeaders(['Migration', 'Status', 'Batch']);
-
         $appliedCount = 0;
         $pendingCount = 0;
+        $rows = [];
 
         foreach ($status as $row) {
             $statusLabel = $row['status'] === 'applied'
-                ? '<info>Applied</info>'
-                : '<comment>Pending</comment>';
+                ? 'Applied'
+                : 'Pending';
             $batchLabel = $row['batch'] !== null ? (string)$row['batch'] : '-';
 
-            $table->addRow([$row['name'], $statusLabel, $batchLabel]);
+            $rows[] = [$row['name'], $statusLabel, $batchLabel];
 
             if ($row['status'] === 'applied') {
                 $appliedCount++;
@@ -66,8 +62,12 @@ final class MigrateStatusCommand extends Command
             }
         }
 
-        $table->render();
-        $io->note("{$appliedCount} applied, {$pendingCount} pending.");
+        \Laravel\Prompts\table(
+            headers: ['Migration', 'Status', 'Batch'],
+            rows: $rows
+        );
+        
+        \Laravel\Prompts\note("{$appliedCount} applied, {$pendingCount} pending.");
 
         return Command::SUCCESS;
     }

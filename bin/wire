@@ -31,9 +31,11 @@ use Totoglu\Console\Commands\PageTrashCommand;
 use Totoglu\Console\Commands\PageMoveCommand;
 use Totoglu\Console\Commands\PageRestoreCommand;
 use Totoglu\Console\Commands\PageUpdateCommand;
-use Totoglu\Console\Commands\LogsCommand;
-use Totoglu\Console\Commands\LogsTailCommand;
-use Totoglu\Console\Commands\LogsClearCommand;
+use Totoglu\Console\Commands\LogListCommand;
+use Totoglu\Console\Commands\LogReadCommand;
+use Totoglu\Console\Commands\LogTailCommand;
+use Totoglu\Console\Commands\LogClearCommand;
+use Totoglu\Console\Commands\LogClearAllCommand;
 use Totoglu\Console\Commands\FieldListCommand;
 use Totoglu\Console\Commands\FieldDeleteCommand;
 use Totoglu\Console\Commands\FieldInfoCommand;
@@ -188,9 +190,11 @@ $application->addCommands([
     new DbRestoreCommand(),
     new BackupListCommand(),
     new BackupPurgeCommand(),
-    new LogsCommand(),
-    new LogsTailCommand(),
-    new LogsClearCommand(),
+    new LogListCommand(),
+    new LogReadCommand(),
+    new LogTailCommand(),
+    new LogClearCommand(),
+    new LogClearAllCommand(),
     new CacheWireClearCommand(),
     new CacheClearCommand(),
     // Migration Commands

@@ -7,7 +7,9 @@ namespace Totoglu\Console\Commands;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\spin;
 
 final class DbBackupCommand extends Command
 {
@@ -20,19 +22,22 @@ final class DbBackupCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
 
         $backup = \ProcessWire\wire('database')->backups();
         if (!$backup) {
-            $io->error("Database backup tool not available.");
+            error("Database backup tool not available.");
             return Command::FAILURE;
         }
 
-        $file = $backup->backup();
+        $file = spin(
+            fn () => $backup->backup(),
+            'Creating database backup...'
+        );
+
         if ($file) {
-            $io->success("Database backup created: {$file}");
+            info("Database backup created: {$file}");
         } else {
-            $io->error("Database backup failed.");
+            error("Database backup failed.");
             return Command::FAILURE;
         }
 

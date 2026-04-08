@@ -8,16 +8,21 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\confirm;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class PermissionDeleteCommand extends Command
 {
+    use InteractWithProcessWire;
     protected function configure(): void
     {
         $this
             ->setName('permission:delete')
             ->setDescription('Delete a custom permission.')
-            ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Permission name (required)')
+            ->addOption('name', null, InputOption::VALUE_OPTIONAL, 'Permission name')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
             ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output')
             ->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations');
@@ -25,49 +30,53 @@ final class PermissionDeleteCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
-        $name = (string)$input->getOption('name');
+        $permName = $input->getOption('name') ? (string)$input->getOption('name') : '';
         $dryRun = (bool)$input->getOption('dry-run');
         $asJson = (bool)$input->getOption('json');
         $force = (bool)$input->getOption('force');
 
-        if (!$name) {
-            $io->error("Provide --name.");
+        if (!$permName && !$asJson) {
+            $permName = $this->searchPermission('Select a permission to delete');
+            if ($permName === 'No matching permissions found') return Command::SUCCESS;
+        }
+
+        if (!$permName) {
+            error("Provide --name.");
             return Command::FAILURE;
         }
 
         $permissions = \ProcessWire\wire('permissions');
-        $perm = $permissions->get($name);
-        if (!$perm || !$perm->id) {
-            $io->error("Permission not found: {$name}");
+        $permission = $permissions->get($permName);
+        if (!$permission || !$permission->id) {
+            error("Permission not found: {$permName}");
             return Command::FAILURE;
         }
 
         if (!$force && !$asJson && !$dryRun) {
-            if (!$io->confirm("Delete permission '{$name}'?", false)) {
-                $io->note("Aborted.");
+            if (!confirm("Delete permission '{$permName}'?", false)) {
+                note("Aborted.");
                 return Command::SUCCESS;
             }
         }
 
-        $result = ['name' => $name, 'dryRun' => $dryRun];
+        $result = ['name' => $permName, 'dryRun' => $dryRun];
         if ($dryRun) {
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->note("Dry-run: would delete permission '{$name}'.");
+                note("Dry-run: would delete permission '{$permName}'.");
             }
             return Command::SUCCESS;
         }
 
         try {
-            $permissions->delete($perm);
+            $permissions->delete($permission);
         } catch (\Throwable $e) {
-            $msg = "Delete failed for permission '{$name}': " . $e->getMessage();
+            $msg = "Delete failed for permission '{$permName}': " . $e->getMessage();
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => false, 'error' => ['code' => 'DELETE_FAILED', 'message' => $msg]], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->error($msg);
+                error($msg);
             }
             return Command::FAILURE;
         }
@@ -75,9 +84,8 @@ final class PermissionDeleteCommand extends Command
         if ($asJson) {
             $output->writeln(json_encode(['ok' => true, 'data' => $result + ['deleted' => true]], JSON_UNESCAPED_SLASHES));
         } else {
-            $io->success("Deleted permission '{$name}'.");
+            info("Deleted permission '{$permName}'.");
         }
         return Command::SUCCESS;
     }
 }
-

@@ -7,9 +7,10 @@ namespace Totoglu\Console\Commands;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\table;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\warning;
 
 final class FieldListCommand extends Command
 {
@@ -25,7 +26,6 @@ final class FieldListCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $type = $input->getOption('type');
         $search = $input->getOption('search');
 
@@ -41,7 +41,7 @@ final class FieldListCommand extends Command
         }
 
         if (empty($filtered)) {
-            $io->warning("No fields found matching criteria.");
+            warning("No fields found matching criteria.");
             return Command::SUCCESS;
         }
 
@@ -64,24 +64,27 @@ final class FieldListCommand extends Command
             }
             $output->writeln(json_encode(['ok' => true, 'data' => ['items' => $items, 'total' => count($filtered)]], JSON_UNESCAPED_SLASHES));
         } else {
-            $table = new Table($output);
-            $table->setHeaders(['ID', 'Name', 'Type', 'Label', 'Contexts', 'Flags']);
+            $headers = ['ID', 'Name', 'Type', 'Label', 'Contexts', 'Flags'];
+            $rows = [];
+            
             foreach ($filtered as $field) {
                 $templates = array_map(fn($t) => $t->name, iterator_to_array($field->getTemplates()));
                 $flags = [];
-                if ($field->flags & \ProcessWire\Field::flagSystem) $flags[] = '<fg=red>sys</>';
-                if ($field->flags & \ProcessWire\Field::flagPermanent) $flags[] = '<fg=yellow>perm</>';
-                $table->addRow([
-                    $field->id,
+                if ($field->flags & \ProcessWire\Field::flagSystem) $flags[] = 'sys';
+                if ($field->flags & \ProcessWire\Field::flagPermanent) $flags[] = 'perm';
+                
+                $rows[] = [
+                    (string) $field->id,
                     $field->name,
                     $field->type->className(),
-                    mb_strimwidth($field->label, 0, 30, '...'),
-                    count($templates),
+                    mb_strimwidth((string)$field->label, 0, 30, '...'),
+                    (string) count($templates),
                     implode('|', $flags) ?: '-'
-                ]);
+                ];
             }
-            $table->render();
-            $io->note("Total fields: " . count($filtered));
+            
+            table(headers: $headers, rows: $rows);
+            info("Total fields: " . count($filtered));
         }
 
         return Command::SUCCESS;

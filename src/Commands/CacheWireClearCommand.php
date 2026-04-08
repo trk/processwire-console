@@ -8,7 +8,8 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
 
 final class CacheWireClearCommand extends Command
 {
@@ -24,13 +25,12 @@ final class CacheWireClearCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $key = $input->getOption('key') ? (string)$input->getOption('key') : '';
         $pattern = $input->getOption('pattern') ? (string)$input->getOption('pattern') : '';
         $asJson = (bool)$input->getOption('json');
 
         if (!$key && !$pattern) {
-            $io->error("Provide --key or --pattern.");
+            error("Provide --key or --pattern.");
             return Command::FAILURE;
         }
 
@@ -51,7 +51,7 @@ final class CacheWireClearCommand extends Command
         if ($asJson) {
             $output->writeln(json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_SLASHES));
         } else {
-            $io->success("Deleted {$deleted} cache entr" . ($deleted === 1 ? 'y' : 'ies') . ".");
+            info("Deleted {$deleted} cache entr" . ($deleted === 1 ? 'y' : 'ies') . ".");
         }
         return Command::SUCCESS;
     }

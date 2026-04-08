@@ -9,7 +9,10 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Helper\Table;
+use function Laravel\Prompts\text;
+use function Laravel\Prompts\table;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\error;
 
 final class PageFindCommand extends Command
 {
@@ -18,16 +21,26 @@ final class PageFindCommand extends Command
         $this
             ->setName('page:find')
             ->setDescription('Find pages using a ProcessWire selector.')
-            ->addArgument('selector', InputArgument::REQUIRED, 'The ProcessWire selector string')
+            ->addArgument('selector', InputArgument::OPTIONAL, 'The ProcessWire selector string')
             ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $selector = $input->getArgument('selector');
+        $asJson = (bool)$input->getOption('json');
+
+        if (!$selector && $input->isInteractive() && !$asJson) {
+            $selector = text('Selector string', required: true);
+        }
+
+        if (!$selector) {
+            error("No selector provided.");
+            return Command::FAILURE;
+        }
+
         $pages = \ProcessWire\wire('pages')->find($selector);
 
-        $asJson = (bool)$input->getOption('json');
         if ($asJson) {
             $items = [];
             foreach ($pages as $page) {
@@ -35,17 +48,23 @@ final class PageFindCommand extends Command
             }
             $output->writeln(json_encode(['ok' => true, 'data' => ['items' => $items, 'count' => count($items)]], JSON_UNESCAPED_SLASHES));
         } else {
-            $table = new Table($output);
-            $table->setHeaders(['ID', 'Path', 'Template']);
+            $rows = [];
             foreach ($pages as $page) {
-                $table->addRow([
+                $rows[] = [
                     $page->id,
                     $page->path,
                     $page->template->name,
-                ]);
+                ];
             }
-            $table->render();
-            $output->writeln("\nFound " . count($pages) . " pages.");
+            if (empty($rows)) {
+                info("No pages found matching '{$selector}'.");
+            } else {
+                table(
+                    headers: ['ID', 'Path', 'Template'],
+                    rows: $rows
+                );
+                info("Found " . count($pages) . " pages.");
+            }
         }
 
         return Command::SUCCESS;

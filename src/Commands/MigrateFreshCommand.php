@@ -8,7 +8,6 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use Totoglu\Console\Migration\Migrator;
 use Totoglu\Console\Migration\MigrationRepository;
 
@@ -25,13 +24,12 @@ final class MigrateFreshCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $force = (bool)$input->getOption('force');
         $asJson = (bool)$input->getOption('json');
 
         if (!$force && !$asJson) {
-            if (!$io->confirm('This will drop the migrations table and re-run ALL migrations. Continue?', false)) {
-                $io->note('Aborted.');
+            if (!\Laravel\Prompts\confirm('This will drop the migrations table and re-run ALL migrations. Continue?', default: false)) {
+                \Laravel\Prompts\note('Aborted.');
                 return Command::SUCCESS;
             }
         }
@@ -40,13 +38,17 @@ final class MigrateFreshCommand extends Command
         $migrator = new Migrator($repository);
 
         // Phase 1: Drop table
-        $repository->dropTable();
         if (!$asJson) {
-            $io->writeln('  <comment>Dropped migrations table.</comment>');
+            \Laravel\Prompts\spin(fn() => $repository->dropTable(), 'Dropping migrations table...');
+            \Laravel\Prompts\info('Dropped migrations table.');
+        } else {
+            $repository->dropTable();
         }
 
         // Phase 2: Re-run all
-        $result = $migrator->runPending();
+        $result = $asJson 
+            ? $migrator->runPending() 
+            : \Laravel\Prompts\spin(fn() => $migrator->runPending(), 'Running all migrations...');
 
         if ($asJson) {
             $ok = empty($result['errors']);
@@ -55,17 +57,17 @@ final class MigrateFreshCommand extends Command
         }
 
         foreach ($result['applied'] as $file) {
-            $io->writeln("  <info>✓</info> {$file}");
+            \Laravel\Prompts\info("  ✓ {$file}");
         }
 
         if (!empty($result['errors'])) {
             foreach ($result['errors'] as $error) {
-                $io->error($error);
+                \Laravel\Prompts\error($error);
             }
             return Command::FAILURE;
         }
 
-        $io->success("Fresh migration: applied " . count($result['applied']) . " migration(s).");
+        \Laravel\Prompts\info("Fresh migration: applied " . count($result['applied']) . " migration(s).");
         return Command::SUCCESS;
     }
 }

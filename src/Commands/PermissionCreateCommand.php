@@ -8,7 +8,9 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\text;
 
 final class PermissionCreateCommand extends Command
 {
@@ -17,19 +19,30 @@ final class PermissionCreateCommand extends Command
         $this
             ->setName('permission:create')
             ->setDescription('Create a new permission.')
-            ->addArgument('name', InputArgument::REQUIRED, 'The name of the permission')
+            ->addArgument('name', InputArgument::OPTIONAL, 'The name of the permission')
             ->addArgument('title', InputArgument::OPTIONAL, 'The title of the permission');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $name = $input->getArgument('name');
         $title = $input->getArgument('title');
 
+        if (!$name && $input->isInteractive()) {
+            $name = text('Permission name', required: true);
+            if (!$title) {
+                $title = text('Permission title (optional)', required: false);
+            }
+        }
+
+        if (!$name) {
+            error("Provide <name> argument or run interactively to enter it.");
+            return Command::FAILURE;
+        }
+
         $existing = \ProcessWire\wire('permissions')->get($name);
         if ($existing && $existing->id) {
-            $io->error("Permission '{$name}' already exists.");
+            error("Permission '{$name}' already exists.");
             return Command::FAILURE;
         }
 
@@ -37,7 +50,7 @@ final class PermissionCreateCommand extends Command
         if ($title) $p->title = $title;
         $p->save();
 
-        $io->success("Permission '{$name}' created.");
+        info("Permission '{$name}' created.");
 
         return Command::SUCCESS;
     }

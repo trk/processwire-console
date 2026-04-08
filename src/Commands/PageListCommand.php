@@ -7,9 +7,10 @@ namespace Totoglu\Console\Commands;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\warning;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\table;
 
 final class PageListCommand extends Command
 {
@@ -28,8 +29,6 @@ final class PageListCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
-
         $template = $input->getOption('template');
         $parent = $input->getOption('parent');
         $sort = $input->getOption('sort');
@@ -49,7 +48,7 @@ final class PageListCommand extends Command
         $asJson = (bool)$input->getOption('json');
 
         if (!$pages->count()) {
-            $io->warning("No pages found matching selector: [{$selector}]");
+            if (!$asJson) warning("No pages found matching selector: [{$selector}]");
             return Command::SUCCESS;
         }
 
@@ -71,24 +70,23 @@ final class PageListCommand extends Command
             }
             $output->writeln(json_encode(['ok' => true, 'data' => ['items' => $items, 'total' => $pages->getTotal(), 'selector' => $selector ?: 'standard']], JSON_UNESCAPED_SLASHES));
         } else {
-            $table = new Table($output);
-            $table->setHeaders(['ID', 'Path', 'Title', 'Template', 'Status', 'Modified']);
+            $rows = [];
             foreach ($pages as $page) {
                 $status = [];
-                if ($page->isHidden()) $status[] = '<fg=yellow>hidden</>';
-                if ($page->isUnpublished()) $status[] = '<fg=red>unpub</>';
-                if ($page->isLocked()) $status[] = '<fg=blue>locked</>';
-                $table->addRow([
+                if ($page->isHidden()) $status[] = 'hidden';
+                if ($page->isUnpublished()) $status[] = 'unpub';
+                if ($page->isLocked()) $status[] = 'locked';
+                $rows[] = [
                     $page->id,
                     $page->path,
                     mb_strimwidth($page->title ?: $page->name, 0, 30, '...'),
                     $page->template->name,
                     implode('|', $status) ?: 'pub',
                     date('Y-m-d H:i', (int)$page->modified)
-                ]);
+                ];
             }
-            $table->render();
-            $io->note("Found " . $pages->getTotal() . " total pages for selector: [" . ($selector ?: "standard") . "]");
+            table(['ID', 'Path', 'Title', 'Template', 'Status', 'Modified'], $rows);
+            note("Found " . $pages->getTotal() . " total pages for selector: [" . ($selector ?: "standard") . "]");
         }
 
         return Command::SUCCESS;

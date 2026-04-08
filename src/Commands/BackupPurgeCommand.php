@@ -8,7 +8,10 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\warning;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\info;
 
 final class BackupPurgeCommand extends Command
 {
@@ -24,14 +27,13 @@ final class BackupPurgeCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $days = (int)$input->getOption('days');
         $asJson = (bool)$input->getOption('json');
         $force = (bool)$input->getOption('force');
 
         $dir = \ProcessWire\wire('config')->paths->assets . 'backups/database/';
         if (!is_dir($dir)) {
-            $io->warning("Directory not found: {$dir}");
+            warning("Directory not found: {$dir}");
             return Command::SUCCESS;
         }
 
@@ -44,8 +46,8 @@ final class BackupPurgeCommand extends Command
         }
 
         if (!$force && !$asJson) {
-            if (!$io->confirm("Delete " . count($candidates) . " file(s) older than {$days} days?", false)) {
-                $io->note("Aborted.");
+            if (!confirm("Delete " . count($candidates) . " file(s) older than {$days} days?", false)) {
+                note("Aborted.");
                 return Command::SUCCESS;
             }
         }
@@ -59,7 +61,7 @@ final class BackupPurgeCommand extends Command
         if ($asJson) {
             $output->writeln(json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_SLASHES));
         } else {
-            $io->success("Deleted {$deleted} backup file(s) older than {$days} days.");
+            info("Deleted {$deleted} backup file(s) older than {$days} days.");
         }
         return Command::SUCCESS;
     }

@@ -8,17 +8,21 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class UserUpdateCommand extends Command
 {
+    use InteractWithProcessWire;
     protected function configure(): void
     {
         $this
             ->setName('user:update')
             ->setDescription('Update a user fields and roles.')
-            ->addOption('id', null, InputOption::VALUE_REQUIRED, 'User ID')
-            ->addOption('name', null, InputOption::VALUE_REQUIRED, 'User name')
+            ->addOption('id', null, InputOption::VALUE_OPTIONAL, 'User ID')
+            ->addOption('name', null, InputOption::VALUE_OPTIONAL, 'User name')
             ->addOption('email', null, InputOption::VALUE_REQUIRED, 'New email')
             ->addOption('password', null, InputOption::VALUE_REQUIRED, 'New password (plain text)')
             ->addOption('add-role', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Role(s) to add')
@@ -29,7 +33,6 @@ final class UserUpdateCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $id = $input->getOption('id');
         $username = $input->getOption('name') ? (string)$input->getOption('name') : '';
         $email = $input->getOption('email') ? (string)$input->getOption('email') : '';
@@ -39,8 +42,13 @@ final class UserUpdateCommand extends Command
         $dryRun = (bool)$input->getOption('dry-run');
         $asJson = (bool)$input->getOption('json');
 
+        if (!$id && !$username && !$asJson) {
+            $username = $this->searchUser('Select a user to update');
+            if ($username === 'No matching users found') return Command::SUCCESS;
+        }
+
         if (!$id && !$username) {
-            $io->error("Provide --id or --name.");
+            error("Provide --id or --name.");
             return Command::FAILURE;
         }
 
@@ -48,7 +56,7 @@ final class UserUpdateCommand extends Command
         $roles = \ProcessWire\wire('roles');
         $user = $id ? $users->get((int)$id) : $users->get((string)$username);
         if (!$user || !$user->id) {
-            $io->error("User not found.");
+            error("User not found.");
             return Command::FAILURE;
         }
 
@@ -65,7 +73,7 @@ final class UserUpdateCommand extends Command
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->note("Dry-run: would update user '{$user->name}'.");
+                note("Dry-run: would update user '{$user->name}'.");
             }
             return Command::SUCCESS;
         }
@@ -91,7 +99,7 @@ final class UserUpdateCommand extends Command
         if ($asJson) {
             $output->writeln(json_encode(['ok' => true, 'data' => $result + ['saved' => true]], JSON_UNESCAPED_SLASHES));
         } else {
-            $io->success("Updated user '{$user->name}'.");
+            info("Updated user '{$user->name}'.");
         }
         return Command::SUCCESS;
     }

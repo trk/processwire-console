@@ -8,29 +8,38 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\spin;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class ModuleInstallCommand extends Command
 {
+    use InteractWithProcessWire;
     protected function configure(): void
     {
         $this
             ->setName('module:install')
             ->setDescription('Install a ProcessWire module by class name.')
-            ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Module class name (required)')
+            ->addOption('name', null, InputOption::VALUE_OPTIONAL, 'Module class name')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
             ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
-        $name = (string)$input->getOption('name');
+        $name = $input->getOption('name') ? (string)$input->getOption('name') : '';
         $dryRun = (bool)$input->getOption('dry-run');
         $asJson = (bool)$input->getOption('json');
 
+        if (!$name && !$asJson) {
+            $name = $this->searchInstallableModule('Select a module to install');
+            if ($name === 'No matching installable modules found') return Command::SUCCESS;
+        }
+
         if (!$name) {
-            $io->error("Provide --name.");
+            error("Provide --name.");
             return Command::FAILURE;
         }
 
@@ -42,7 +51,7 @@ final class ModuleInstallCommand extends Command
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->note("Dry-run: would install module '{$name}'.");
+                note("Dry-run: would install module '{$name}'.");
             }
             return Command::SUCCESS;
         }
@@ -51,19 +60,26 @@ final class ModuleInstallCommand extends Command
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->success("Module '{$name}' is already installed.");
+                info("Module '{$name}' is already installed.");
             }
             return Command::SUCCESS;
         }
 
         try {
-            $modules->install($name);
+            if ($asJson) {
+                $modules->install($name);
+            } else {
+                spin(
+                    fn () => $modules->install($name),
+                    "Installing module '{$name}'..."
+                );
+            }
         } catch (\Throwable $e) {
             $msg = "Install failed for module '{$name}': " . $e->getMessage();
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => false, 'error' => ['code' => 'INSTALL_FAILED', 'message' => $msg]], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->error($msg);
+                error($msg);
             }
             return Command::FAILURE;
         }
@@ -71,7 +87,7 @@ final class ModuleInstallCommand extends Command
         if ($asJson) {
             $output->writeln(json_encode(['ok' => true, 'data' => $result + ['installed' => true]], JSON_UNESCAPED_SLASHES));
         } else {
-            $io->success("Installed module '{$name}'.");
+            info("Installed module '{$name}'.");
         }
         return Command::SUCCESS;
     }

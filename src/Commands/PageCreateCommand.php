@@ -8,22 +8,27 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\confirm;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class PageCreateCommand extends Command
 {
+    use InteractWithProcessWire;
+
     protected function configure(): void
     {
         $this
             ->setName('page:create')
             ->setDescription('Create a new page under a parent with a given template.')
-            ->addOption('parent', 'p', InputOption::VALUE_REQUIRED, 'Parent page path or ID (required)')
-            ->addOption('template', 't', InputOption::VALUE_REQUIRED, 'Template name (required)')
-            ->addOption('name', null, InputOption::VALUE_REQUIRED, 'Page name (optional, derived from title if omitted)')
-            ->addOption('title', null, InputOption::VALUE_REQUIRED, 'Page title (optional)')
+            ->addOption('parent', 'p', InputOption::VALUE_OPTIONAL, 'Parent page path or ID')
+            ->addOption('template', 't', InputOption::VALUE_OPTIONAL, 'Template name')
+            ->addOption('name', null, InputOption::VALUE_OPTIONAL, 'Page name (optional, derived from title if omitted)')
+            ->addOption('title', null, InputOption::VALUE_OPTIONAL, 'Page title (optional)')
             ->addOption('unpublished', null, InputOption::VALUE_NONE, 'Create as unpublished')
             ->addOption('interactive', 'i', InputOption::VALUE_NONE, 'Prompt for missing values and field inputs')
             ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes, only show what would happen')
@@ -32,8 +37,6 @@ final class PageCreateCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
-
         $parentArg = (string)$input->getOption('parent');
         $templateName = (string)$input->getOption('template');
         $name = $input->getOption('name') ? (string)$input->getOption('name') : null;
@@ -49,12 +52,12 @@ final class PageCreateCommand extends Command
 
         if (($wantInteractive || !$parentArg || !$templateName) && $input->isInteractive() && !$asJson) {
             if (!$templateName) {
-                $templateNames = [];
-                foreach ($templates as $t) $templateNames[] = $t->name;
-                $templateName = select('Template', $templateNames);
+                $templateName = $this->searchTemplate('Select template');
+                if ($templateName === 'No matching templates found' || $templateName === '') return Command::SUCCESS;
             }
             if (!$parentArg) {
-                $parentArg = text('Parent (path or ID)');
+                $parentArg = (string)$this->searchPage('Select parent page');
+                if ($parentArg === '' || str_starts_with($parentArg, 'No matching')) return Command::SUCCESS;
             }
             if (!$title) {
                 $title = text('Title', required: false);
@@ -66,15 +69,20 @@ final class PageCreateCommand extends Command
             }
         }
 
+        if (!$parentArg || !$templateName) {
+            error("Provide --parent and --template.");
+            return Command::FAILURE;
+        }
+
         $parent = is_numeric($parentArg) ? $pages->get((int)$parentArg) : $pages->get($parentArg);
         if (!$parent || !$parent->id) {
-            $io->error("Parent not found: {$parentArg}");
+            error("Parent not found: {$parentArg}");
             return Command::FAILURE;
         }
 
         $template = $templates->get($templateName);
         if (!$template || !$template->id) {
-            $io->error("Template not found: {$templateName}");
+            error("Template not found: {$templateName}");
             return Command::FAILURE;
         }
 
@@ -99,7 +107,7 @@ final class PageCreateCommand extends Command
             if ($asJson) {
                 $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
             } else {
-                $io->note("Dry-run: would create page '{$name}' under '{$parent->path}' with template '{$templateName}'.");
+                note("Dry-run: would create page '{$name}' under '{$parent->path}' with template '{$templateName}'.");
             }
             return Command::SUCCESS;
         }
@@ -146,7 +154,7 @@ final class PageCreateCommand extends Command
         if ($asJson) {
             $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
         } else {
-            $io->success("Created page #{$page->id} at {$page->url} (template: {$templateName})");
+            info("Created page #{$page->id} at {$page->url} (template: {$templateName})");
         }
 
         return Command::SUCCESS;

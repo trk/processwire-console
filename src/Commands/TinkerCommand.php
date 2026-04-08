@@ -8,7 +8,10 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\text;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\info;
 
 final class TinkerCommand extends Command
 {
@@ -22,7 +25,6 @@ final class TinkerCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $code = $input->getArgument('code');
 
         if ($code) {
@@ -33,17 +35,17 @@ final class TinkerCommand extends Command
                 $output->writeln($result);
                 return Command::SUCCESS;
             } catch (\Throwable $e) {
-                $io->error($e->getMessage());
+                error($e->getMessage());
                 return Command::FAILURE;
             }
         }
 
-        $io->title('ProcessWire Tinker');
-        $io->note('Type PHP code and press enter. Type "exit" to quit.');
+        info('ProcessWire Tinker');
+        note('Type PHP code and press enter. Type "exit" to quit.');
 
         while (true) {
-            $line = $io->ask('>>> ');
-            if ($line === null || in_array(strtolower($line), ['exit', 'quit', 'die'])) {
+            $line = text('>>>');
+            if ($line === null || $line === '' || in_array(strtolower($line), ['exit', 'quit', 'die'])) {
                 break;
             }
 
@@ -53,7 +55,7 @@ final class TinkerCommand extends Command
                 $result = ob_get_clean() ?: '';
                 $output->writeln($result);
             } catch (\Throwable $e) {
-                $io->error($e->getMessage());
+                error($e->getMessage());
             }
         }
 

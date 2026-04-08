@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use Totoglu\Console\Migration\Migrator;
 use Totoglu\Console\Migration\MigrationRepository;
 
@@ -32,8 +31,6 @@ final class MakeMigrationCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
-
         $name = (string)$input->getArgument('name');
         $type = (string)$input->getOption('type');
 
@@ -47,7 +44,7 @@ final class MakeMigrationCommand extends Command
         $filePath = $migrator->getMigrationsPath() . $fileName;
 
         if (file_exists($filePath)) {
-            $io->error("Migration file already exists: {$fileName}");
+            \Laravel\Prompts\error("Migration file already exists: {$fileName}");
             return Command::FAILURE;
         }
 
@@ -64,13 +61,13 @@ final class MakeMigrationCommand extends Command
 
         $stubFile = $stubMap[$type] ?? null;
         if ($stubFile === null) {
-            $io->error("Unknown migration type: {$type}. Valid types: " . implode(', ', array_keys($stubMap)));
+            \Laravel\Prompts\error("Unknown migration type: {$type}. Valid types: " . implode(', ', array_keys($stubMap)));
             return Command::FAILURE;
         }
 
         $stubPath = __DIR__ . '/../../resources/stubs/' . $stubFile;
         if (!file_exists($stubPath)) {
-            $io->error("Stub file not found: {$stubFile}");
+            \Laravel\Prompts\error("Stub file not found: {$stubFile}");
             return Command::FAILURE;
         }
 
@@ -84,8 +81,8 @@ final class MakeMigrationCommand extends Command
 
         file_put_contents($filePath, $content);
 
-        $io->success("Created migration: {$fileName}");
-        $io->note("Path: {$filePath}");
+        \Laravel\Prompts\info("Created migration: {$fileName}");
+        \Laravel\Prompts\note("Path: {$filePath}");
 
         return Command::SUCCESS;
     }

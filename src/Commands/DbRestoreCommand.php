@@ -8,7 +8,11 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
+use function Laravel\Prompts\note;
+use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\spin;
 
 final class DbRestoreCommand extends Command
 {
@@ -25,35 +29,34 @@ final class DbRestoreCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $file = (string)$input->getOption('file');
         $dryRun = (bool)$input->getOption('dry-run');
         $asJson = (bool)$input->getOption('json');
         $force = (bool)$input->getOption('force');
 
         if (!$file) {
-            $io->error("Provide --file.");
+            error("Provide --file.");
             return Command::FAILURE;
         }
         if (!is_file($file) || !is_readable($file)) {
-            $io->error("SQL file not readable: {$file}");
+            error("SQL file not readable: {$file}");
             return Command::FAILURE;
         }
         if (str_ends_with(strtolower($file), '.gz')) {
-            $io->error(".gz not supported in this command. Provide an extracted .sql file.");
+            error(".gz not supported in this command. Provide an extracted .sql file.");
             return Command:: FAILURE;
         }
 
         if ($dryRun) {
             $data = ['file' => realpath($file), 'validated' => true];
             if ($asJson) $output->writeln(json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_SLASHES));
-            else $io->success("Validated SQL file: " . realpath($file));
+            else info("Validated SQL file: " . realpath($file));
             return Command::SUCCESS;
         }
 
         if (!$force && !$asJson) {
-            if (!$io->confirm("This will run SQL statements on your database. Continue?", false)) {
-                $io->note("Aborted.");
+            if (!confirm("This will run SQL statements on your database. Continue?", false)) {
+                note("Aborted.");
                 return Command::SUCCESS;
             }
         }
@@ -63,10 +66,17 @@ final class DbRestoreCommand extends Command
         try {
             $backup = $db->backups();
             if (!$backup) {
-                $io->error("Database backup tool not available.");
+                error("Database backup tool not available.");
                 return Command::FAILURE;
             }
-            $result = $backup->restore($file);
+            if ($asJson) {
+                $result = $backup->restore($file);
+            } else {
+                $result = spin(
+                    fn () => $backup->restore($file),
+                    "Restoring database from {$file}..."
+                );
+            }
             if (!$result) {
                 $msg = "Restore returned no result — check the SQL file.";
                 $errors = $backup->errors();
@@ -74,19 +84,19 @@ final class DbRestoreCommand extends Command
                     $msg .= "\n" . implode("\n", $errors);
                 }
                 if ($asJson) $output->writeln(json_encode(['ok' => false, 'error' => ['code' => 'RESTORE_FAILED', 'message' => $msg]], JSON_UNESCAPED_SLASHES));
-                else $io->error($msg);
+                else error($msg);
                 return Command::FAILURE;
             }
         } catch (\Throwable $e) {
             $msg = "Restore failed: " . $e->getMessage();
             if ($asJson) $output->writeln(json_encode(['ok' => false, 'error' => ['code' => 'RESTORE_FAILED', 'message' => $msg]], JSON_UNESCAPED_SLASHES));
-            else $io->error($msg);
+            else error($msg);
             return Command::FAILURE;
         }
 
         $data = ['file' => realpath($file), 'restored' => true];
         if ($asJson) $output->writeln(json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_SLASHES));
-        else $io->success("Database restored from {$file}.");
+        else info("Database restored from {$file}.");
         return Command::SUCCESS;
     }
 }

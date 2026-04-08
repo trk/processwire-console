@@ -9,9 +9,11 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\text;
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
 
 final class RoleCreateCommand extends Command
 {
@@ -20,21 +22,28 @@ final class RoleCreateCommand extends Command
         $this
             ->setName('role:create')
             ->setDescription('Create a new role.')
-            ->addArgument('name', InputArgument::REQUIRED, 'The name of the role')
-            ->addOption('permissions', null, InputOption::VALUE_REQUIRED, 'Comma-separated permission names to grant')
+            ->addArgument('name', InputArgument::OPTIONAL, 'The name of the role')
+            ->addOption('permissions', null, InputOption::VALUE_OPTIONAL, 'Comma-separated permission names to grant')
             ->addOption('interactive', 'i', InputOption::VALUE_NONE, 'Prompt to select permissions to grant');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $name = $input->getArgument('name');
+        
+        if (!$name) {
+            $name = text(
+                label: 'Role name',
+                required: true
+            );
+        }
+
         $permsOpt = $input->getOption('permissions') ? (string)$input->getOption('permissions') : '';
         $wantInteractive = (bool)$input->getOption('interactive');
 
         $existing = \ProcessWire\wire('roles')->get($name);
         if ($existing && $existing->id) {
-            $io->error("Role '{$name}' already exists.");
+            error("Role '{$name}' already exists.");
             return Command::FAILURE;
         }
 
@@ -72,7 +81,7 @@ final class RoleCreateCommand extends Command
 
         $msg = "Role '{$name}' created.";
         if ($granted) $msg .= " Granted: " . implode(', ', $granted) . ".";
-        $io->success($msg);
+        info($msg);
 
         return Command::SUCCESS;
     }

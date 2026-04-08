@@ -7,7 +7,7 @@ namespace Totoglu\Console\Commands;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use function Laravel\Prompts\info;
 
 final class CacheClearCommand extends Command
 {
@@ -20,11 +20,10 @@ final class CacheClearCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
 
         // Clear module cache
         \ProcessWire\wire('modules')->resetCache();
-        $io->info("Module cache cleared.");
+        info("Module cache cleared.");
 
         // Clear compiled templates
         $compiledPath = \ProcessWire\wire('config')->paths->cache . 'FileCompiler/';
@@ -44,10 +43,10 @@ final class CacheClearCommand extends Command
                     unlink($realPath);
                 }
             }
-            $io->info("Compiled templates (FileCompiler) cache cleared.");
+            info("Compiled templates (FileCompiler) cache cleared.");
         }
 
-        $io->success("ProcessWire caches cleared successfully.");
+        info("ProcessWire caches cleared successfully.");
 
         return Command::SUCCESS;
     }

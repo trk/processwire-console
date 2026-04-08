@@ -8,7 +8,6 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
 use Totoglu\Console\Migration\Migrator;
 use Totoglu\Console\Migration\MigrationRepository;
 
@@ -25,20 +24,21 @@ final class MigrateResetCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
         $force = (bool)$input->getOption('force');
         $asJson = (bool)$input->getOption('json');
 
         $migrator = new Migrator(new MigrationRepository());
 
         if (!$force && !$asJson) {
-            if (!$io->confirm('This will rollback ALL applied migrations. Continue?', false)) {
-                $io->note('Aborted.');
+            if (!\Laravel\Prompts\confirm('This will rollback ALL applied migrations. Continue?', default: false)) {
+                \Laravel\Prompts\note('Aborted.');
                 return Command::SUCCESS;
             }
         }
 
-        $result = $migrator->reset();
+        $result = $asJson
+            ? $migrator->reset()
+            : \Laravel\Prompts\spin(fn() => $migrator->reset(), 'Resetting all migrations...');
 
         if ($asJson) {
             $ok = empty($result['errors']);
@@ -47,22 +47,22 @@ final class MigrateResetCommand extends Command
         }
 
         if (empty($result['rolledBack']) && empty($result['errors'])) {
-            $io->note('Nothing to reset.');
+            \Laravel\Prompts\note('Nothing to reset.');
             return Command::SUCCESS;
         }
 
         foreach ($result['rolledBack'] as $file) {
-            $io->writeln("  <comment>↩</comment> {$file}");
+            \Laravel\Prompts\warning("  ↩ {$file}");
         }
 
         if (!empty($result['errors'])) {
             foreach ($result['errors'] as $error) {
-                $io->error($error);
+                \Laravel\Prompts\error($error);
             }
             return Command::FAILURE;
         }
 
-        $io->success("Reset " . count($result['rolledBack']) . " migration(s).");
+        \Laravel\Prompts\info("Reset " . count($result['rolledBack']) . " migration(s).");
         return Command::SUCCESS;
     }
 }
