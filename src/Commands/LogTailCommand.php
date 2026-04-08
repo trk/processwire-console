@@ -28,18 +28,30 @@ final class LogTailCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $name = (string) $input->getArgument('name');
+        $follow = (bool)$input->getOption('follow');
         
-        if (empty($name)) {
+        $isInteractive = empty($name);
+
+        if ($isInteractive) {
             $name = $this->searchLog('Select a log file');
             if ($name === 'No matching logs found') {
                 error('No log files available.');
                 return Command::FAILURE;
             }
+
+            // In interactive mode, ask if they want to follow if they didn't specify --follow
+            if (!$follow) {
+                $follow = \Laravel\Prompts\confirm(
+                    label: 'Do you want to follow the output?',
+                    default: true,
+                    yes: 'Yes, tail the file continuously',
+                    no: 'No, just show recent lines'
+                );
+            }
         }
 
         $file = basename((string)$name);
         $lines = (int)$input->getOption('lines');
-        $follow = (bool)$input->getOption('follow');
 
         $path = \ProcessWire\wire('config')->paths->logs . $file . '.txt';
         if (!is_file($path)) {
