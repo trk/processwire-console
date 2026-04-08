@@ -56,12 +56,12 @@ ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills th
 | Schema (Templates) | 6 commands | List, info, create, update, rename, reorder fields |
 | Modules | 5 commands | List, install, uninstall, refresh, upgrade |
 | Users & RBAC | 11 commands | Users, roles, permissions management |
-| Cache & Logs | 5 commands | Clear caches, tail/clear log files |
+| Cache & Logs | 7 commands | Clear caches, list/read/tail/clear log files |
 | Database | 4 commands | Backup, restore, list backups, purge old backups |
 | Scaffolding | 2 commands | Generate modules and migrations |
 | Migrations | 8 commands | Run, rollback, reset, refresh, fresh, status |
 | Runtime | 2 commands | Interactive REPL, command listing |
-| **Total** | **57 commands** | |
+| **Total** | **59 commands** | |
 
 Every command supports `--json` for machine-readable output, `--dry-run` for safe previews, and `--force` for non-interactive scripting.
 
@@ -574,37 +574,67 @@ php vendor/bin/wire cache:wire:clear --pattern="MyModule.%" --json
 
 ### Logs
 
-#### `logs`
+#### `log:list`
 
-List available log files.
+List all available log files.
 
 ```bash
-php vendor/bin/wire logs
-php vendor/bin/wire logs --json
+php vendor/bin/wire log:list
+php vendor/bin/wire log:list --json
 ```
 
-#### `logs:tail`
+#### `log:read`
 
-Read the last N lines of a log file.
+Retrieve and display ProcessWire logs as a formatted table.
 
 ```bash
-# Read errors.txt (last 20 lines by default)
-php vendor/bin/wire logs:tail --file=errors
+# Read 'errors' log
+php vendor/bin/wire log:read errors
 
-# Read more lines
-php vendor/bin/wire logs:tail --file=exceptions --lines=100
+# Read with a specific date range
+php vendor/bin/wire log:read messages --from="2026-04-01" --to="today"
+
+# Limit output and filter by string
+php vendor/bin/wire log:read errors --limit=50 --find="Exception"
 
 # JSON output
-php vendor/bin/wire logs:tail --file=errors --json
+php vendor/bin/wire log:read errors --json
 ```
 
-#### `logs:clear`
+#### `log:tail`
+
+Read the last N lines of a log file and follow output.
+
+```bash
+# Read errors.txt (last 200 lines by default)
+php vendor/bin/wire log:tail errors
+
+# Read fewer lines
+php vendor/bin/wire log:tail exceptions --lines=20
+
+# Follow output (like tail -f)
+php vendor/bin/wire log:tail messages --follow
+
+# JSON output
+php vendor/bin/wire log:tail errors --json
+```
+
+#### `log:clear`
 
 Clear a specific log file.
 
 ```bash
-php vendor/bin/wire logs:clear --file=errors
-php vendor/bin/wire logs:clear --file=exceptions --force
+php vendor/bin/wire log:clear errors
+php vendor/bin/wire log:clear exceptions --force
+```
+
+#### `log:clear-all`
+
+Clear all ProcessWire log files.
+
+```bash
+php vendor/bin/wire log:clear-all
+php vendor/bin/wire log:clear-all --force
 ```
 
 ---
@@ -1073,7 +1103,7 @@ The console engine reads `vendor/composer/installed.json` **and** root `composer
 
 ### Path Traversal Protection
 
-Log commands (`logs:tail`, `logs:clear`) sanitize the `--file` option with `basename()` to prevent directory traversal attacks.
+Log commands (`log:tail`, `log:read`, `log:clear`) sanitize the log `name` argument with `basename()` to prevent directory traversal attacks.
 
 ### Tinker Guard
 
