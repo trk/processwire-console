@@ -17,7 +17,7 @@ final class SeederManager
 
     /**
      * Get all auto-discovered seeders.
-     * Searches site/seeders and site/modules/*/seeders
+     * Searches site/seeders and site/modules/[name]/seeders
      *
      * @return array<string, string> Base name => Full file path
      */

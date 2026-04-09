@@ -17,7 +17,7 @@ final class ScheduleManager
 
     /**
      * Get all auto-discovered scheduled tasks.
-     * Searches site/schedule and site/modules/*/schedule
+     * Searches site/schedule and site/modules/[name]/schedule
      *
      * @return array<string, string> Base name => Full file path
      */
