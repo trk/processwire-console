@@ -1,0 +1,26 @@
+<?php
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Totoglu\Console\Queue\Queue;
+
+/**
+ * Queue: {{class}}
+ * 
+ * Dispatch this job natively using:
+ * Queue::push('{{class}}', ['example' => 'data']);
+ */
+class {{class}} extends Queue
+{
+    /**
+     * Execute the job.
+     *
+     * @param array<string, mixed> $payload The associated payload data from the dispatcher
+     */
+    public function handle(array $payload): void
+    {
+        // ... perform your logic here. E.g.:
+        // $value = $payload['example'] ?? null;
+    }
+}

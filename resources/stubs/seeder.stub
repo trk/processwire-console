@@ -1,0 +1,31 @@
+<?php
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Totoglu\Console\Database\Seeder;
+
+class {{class}} extends Seeder
+{
+    /**
+     * Run the database seeders.
+     */
+    public function run(): void
+    {
+        // Example 1: Use ProcessWire API
+        // $page = new \ProcessWire\Page();
+        // $page->template = 'basic-page';
+        // $page->parent = '/';
+        // $page->title = 'Sample Page';
+        // $page->save();
+
+        // Example 2: From JSON file
+        // $data = json_decode(file_get_contents(__DIR__ . '/data.json'), true);
+        // foreach ($data as $item) { ... }
+        
+        // Example 3: Using Faker (if fakerphp/faker is installed via composer)
+        // if ($this->faker) {
+        //     $title = $this->faker->sentence(4);
+        // }
+    }
+}

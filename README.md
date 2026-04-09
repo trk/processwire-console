@@ -34,6 +34,10 @@
   - [Database & Backup](#database--backup)
   - [Scaffolding](#scaffolding)
   - [Migrations](#migrations)
+  - [Queues](#queues)
+  - [Database Seeding](#database-seeding)
+  - [Task Scheduling](#task-scheduling)
+  - [Maintenance Mode](#maintenance-mode)
   - [Tinker (REPL)](#tinker-repl)
 - [JSON Output (Machine-Readable)](#json-output-machine-readable)
 - [Interactive Mode](#interactive-mode)
@@ -58,10 +62,14 @@ ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills th
 | Users & RBAC | 11 commands | Users, roles, permissions management |
 | Cache & Logs | 7 commands | Clear caches, list/read/tail/clear log files |
 | Database | 4 commands | Backup, restore, list backups, purge old backups |
-| Scaffolding | 2 commands | Generate modules and migrations |
+| Scaffolding | 5 commands | Generate modules, migrations, queues, seeders, schedules |
 | Migrations | 8 commands | Run, rollback, reset, refresh, fresh, status |
+| Queues | 5 commands | Work, failed, retry, clear, initialize tables |
+| Seeding | 1 command | Populate the database with test data |
+| Scheduling | 1 command | Run due scheduled tasks |
+| Maintenance | 2 commands | Put the application up or down |
 | Runtime | 2 commands | Interactive REPL, command listing |
-| **Total** | **59 commands** | |
+| **Total** | **71 commands** | |
 
 Every command supports `--json` for machine-readable output, `--dry-run` for safe previews, and `--force` for non-interactive scripting.
 
@@ -163,6 +171,9 @@ php vendor/bin/wire db:backup
 
 # Interactive REPL
 php vendor/bin/wire tinker
+
+# Start Queue Worker
+php vendor/bin/wire queue:work
 ```
 
 ---
@@ -818,6 +829,24 @@ All stubs include **precondition guards** in `down()` that throw clear errors in
 | `create-role` | Users assigned this role? | `"Cannot delete — remove from users first"` |
 | `install-module` | Other modules depend on it? | `"Cannot uninstall — dependencies exist"` |
 
+### make:queue
+
+Generate a new file-based Queue class in ProcessWire Console.
+
+```bash
+php vendor/bin/wire make:queue SendEmailQueue
+
+# Save directly to a specific module instead of the global site/queue directory
+php vendor/bin/wire make:queue CompileImagesQueue --module=FieldtypeAiAssistant
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `name` | | Class name ending with Queue (required) |
+| `--module` | `-m` | Placed inside site/modules/YourModule/queue/ |
+
 > **Design philosophy:** Stubs never auto-delete user content or cascade-remove dependencies. They fail loudly so you can write the correct cleanup migration yourself.
 
 Each migration file returns an anonymous class with `up()` and `down()` methods:
@@ -962,6 +991,150 @@ Show the active version of ProcessWire, processwire-console, and associated ecos
 ```bash
 php vendor/bin/wire version
 php vendor/bin/wire -V
+```
+
+---
+
+### Queues
+
+ProcessWire Console offers a lightweight, file-based Queue Management System that automatically discovers `*Queue.php` classes.
+
+#### `queue:table`
+
+Create the database tables (`queue_jobs` and `failed_jobs`) required to store queue data.
+
+```bash
+php vendor/bin/wire queue:table
+```
+
+#### `queue:work`
+
+Start the queue worker daemon to process background jobs continually.
+
+```bash
+php vendor/bin/wire queue:work --queue=default --sleep=3 --tries=3
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--queue` | Name of the queue. Default: `default` |
+| `--sleep` | Seconds to wait before polling again if empty. Default: `3` |
+| `--tries` | Attempts before a job fails. Default: `3` |
+
+#### `queue:failed`
+
+List recent failed jobs cleanly in a table.
+
+```bash
+php vendor/bin/wire queue:failed
+```
+
+#### `queue:retry`
+
+Push a failed job back onto the queue for processing, or bulk retry all.
+
+```bash
+php vendor/bin/wire queue:retry 12
+php vendor/bin/wire queue:retry all
+```
+
+#### `queue:clear`
+
+Wipe all logs from the `failed_jobs` database.
+
+```bash
+php vendor/bin/wire queue:clear
+```
+
+---
+
+### Database Seeding
+
+Populate your database with initial data or fake data using ProcessWire Console.
+
+> **Tip:** If you need fake data generation, it is highly recommended to install Faker via `composer require fakerphp/faker`. The base Seeder class will automatically inject a Faker instance for you to use via `$this->faker`. You can also just parse local JSON files natively.
+
+#### `make:seeder`
+
+Generate a new seeder stub.
+
+```bash
+php vendor/bin/wire make:seeder UsersSeeder
+php vendor/bin/wire make:seeder DemoProductsSeeder --module=Shop
+```
+
+#### `db:seed`
+
+Run the database seeders. It auto-discovers seeders in `site/seeders/` and `site/modules/*/seeders/`.
+
+```bash
+# Run all discovered seeders
+php vendor/bin/wire db:seed
+
+# Run a specific seeder class
+php vendor/bin/wire db:seed --class=UsersSeeder
+```
+
+---
+
+### Task Scheduling
+
+Manage scheduled, recurring tasks from a single cron entry using `dragonmantank/cron-expression`.
+
+**Cron Configuration:**
+Add a single entry to your server's crontab that runs every minute:
+```bash
+* * * * * cd /path/to/project && php vendor/bin/wire schedule:run >> /dev/null 2>&1
+```
+
+#### `make:task`
+
+Generate a new scheduled task stub.
+
+```bash
+php vendor/bin/wire make:task SyncDataTask
+php vendor/bin/wire make:task CleanupTask --module=AppAdmin
+```
+
+#### `schedule:run`
+
+Evaluate and run any scheduled tasks that are currently due.
+
+```bash
+php vendor/bin/wire schedule:run
+```
+
+---
+
+### Maintenance Mode
+
+Easily put your application into a maintenance or disabled state.
+
+**Requirement:** For ProcessWire to respond to this state, update `site/init.php` to check for `site/assets/down.json`. (See the Boost `pw-maintenance` skill for a code snippet).
+
+#### `down`
+
+Put the application into maintenance mode.
+
+```bash
+# Basic down
+php vendor/bin/wire down
+
+# With a bypass secret to allow developers to access via ?secret=dev123
+php vendor/bin/wire down --secret=dev123
+
+# Redirect visitors to another URL
+php vendor/bin/wire down --redirect=https://status.example.com
+```
+
+#### `up`
+
+Bring the application out of maintenance mode.
+
+```bash
+php vendor/bin/wire up
 ```
 
 ---

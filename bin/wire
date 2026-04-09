@@ -59,6 +59,13 @@ use Totoglu\Console\Commands\PermissionDeleteCommand;
 use Totoglu\Console\Commands\CacheClearCommand;
 use Totoglu\Console\Commands\VersionCommand;
 use Totoglu\Console\Commands\MakeMigrationCommand;
+use Totoglu\Console\Commands\MakeSeederCommand;
+use Totoglu\Console\Commands\DbSeedCommand;
+use Totoglu\Console\Commands\MakeQueueCommand;
+use Totoglu\Console\Commands\MakeTaskCommand;
+use Totoglu\Console\Commands\ScheduleRunCommand;
+use Totoglu\Console\Commands\DownCommand;
+use Totoglu\Console\Commands\UpCommand;
 use Totoglu\Console\Commands\MigrateCommand;
 use Totoglu\Console\Commands\MigrateRollbackCommand;
 use Totoglu\Console\Commands\MigrateResetCommand;
@@ -67,6 +74,11 @@ use Totoglu\Console\Commands\MigrateFreshCommand;
 use Totoglu\Console\Commands\MigrateStatusCommand;
 use Totoglu\Console\Commands\MigrateInstallCommand;
 
+use Totoglu\Console\Commands\QueueTableCommand;
+use Totoglu\Console\Commands\QueueWorkCommand;
+use Totoglu\Console\Commands\QueueFailedCommand;
+use Totoglu\Console\Commands\QueueRetryCommand;
+use Totoglu\Console\Commands\QueueClearCommand;
 
 /**
  * Locate the Composer autoloader.
@@ -79,6 +91,8 @@ if (isset($GLOBALS['_composer_autoload_path']) && file_exists($GLOBALS['_compose
 } else {
     // Fallbacks
     $candidates = [
+        __DIR__ . '/../vendor/autoload.php',          // Local dev inside the package
+        __DIR__ . '/../../../vendor/autoload.php',    // If package is nested inside /src folder and root has vendor/
         __DIR__ . '/../../../autoload.php',           // Typical vendor/trk/package/bin/
         __DIR__ . '/../../vendor/autoload.php',       // Typical root dev
         __DIR__ . '/../../../../vendor/autoload.php', // If symlinked and 3 dirs deep
@@ -229,8 +243,19 @@ $application->addCommands([
     new CacheWireClearCommand(),
     new CacheClearCommand(),
     new VersionCommand(),
+    new MakeSeederCommand(),
+    new DbSeedCommand(),
+    // Scheduling Commands
+    new MakeTaskCommand(),
+    new ScheduleRunCommand(),
+    
+    // Maintenance Commands
+    new DownCommand(),
+    new UpCommand(),
+
     // Migration Commands
     new MakeMigrationCommand(),
+    new MakeQueueCommand(),
     new MigrateCommand(),
     new MigrateRollbackCommand(),
     new MigrateResetCommand(),
@@ -238,6 +263,12 @@ $application->addCommands([
     new MigrateFreshCommand(),
     new MigrateStatusCommand(),
     new MigrateInstallCommand(),
+    // Queue Commands
+    new QueueTableCommand(),
+    new QueueWorkCommand(),
+    new QueueFailedCommand(),
+    new QueueRetryCommand(),
+    new QueueClearCommand(),
 ]);
 
 /**

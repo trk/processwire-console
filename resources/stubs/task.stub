@@ -1,0 +1,28 @@
+<?php
+declare(strict_types=1);
+
+namespace {{namespace}};
+
+use Totoglu\Console\Scheduling\Task;
+use Totoglu\Console\Scheduling\Event;
+
+class {{class}} extends Task
+{
+    /**
+     * Define the schedule for this task.
+     */
+    public function schedule(Event $schedule): void
+    {
+        // $schedule->everyMinute();
+        // $schedule->dailyAt('13:00');
+    }
+
+    /**
+     * Execute the task logic.
+     */
+    public function handle(): void
+    {
+        // Example: Queue a background job or perform database cleanup
+        // \Totoglu\Console\Queue\Queue::push('CleanLogsQueue', []);
+    }
+}
