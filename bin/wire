@@ -278,16 +278,8 @@ $application->addCommands([
  */
 if ($wire instanceof \ProcessWire\ProcessWire) {
     try {
-        $commandPaths = [
-            $wire->config->paths->site . 'commands/',
-        ];
-
-        // Include any module that has a commands/ directory
-        $modulesPath = $wire->config->paths->siteModules;
-        if (is_dir($modulesPath)) {
-            $matchedModules = glob($modulesPath . '*/commands/', GLOB_ONLYDIR) ?: [];
-            $commandPaths = array_merge($commandPaths, $matchedModules);
-        }
+        $discoverer = new \Totoglu\Console\Support\FeatureDiscoverer($wire);
+        $commandPaths = $discoverer->getFeaturePaths('commands');
 
         foreach ($commandPaths as $siteCommandsPath) {
             if (is_dir($siteCommandsPath)) {
@@ -308,7 +300,11 @@ if ($wire instanceof \ProcessWire\ProcessWire) {
                         if (class_exists($className)) {
                             $cmd = new $className();
                             if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                                $application->add($cmd);
+                                if (method_exists($application, 'add')) {
+                                    $application->add($cmd);
+                                } elseif (method_exists($application, 'addCommand')) {
+                                    $application->addCommand($cmd);
+                                }
                             }
                         }
                     }
@@ -316,7 +312,7 @@ if ($wire instanceof \ProcessWire\ProcessWire) {
             }
         }
     } catch (\Throwable $e) {
-        // Silently fail site-specific command loading
+        echo "ERR: " . $e . "\n";
     }
 }
 
@@ -345,7 +341,11 @@ try {
                                 if (is_string($fqcn) && class_exists($fqcn)) {
                                     $cmd = new $fqcn();
                                     if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                                        $application->add($cmd);
+                                        if (method_exists($application, 'add')) {
+                                            $application->add($cmd);
+                                        } elseif (method_exists($application, 'addCommand')) {
+                                            $application->addCommand($cmd);
+                                        }
                                     }
                                 }
                             }
@@ -373,7 +373,11 @@ try {
                     if (is_string($fqcn) && class_exists($fqcn)) {
                         $cmd = new $fqcn();
                         if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                            $application->add($cmd);
+                            if (method_exists($application, 'add')) {
+                                $application->add($cmd);
+                            } elseif (method_exists($application, 'addCommand')) {
+                                $application->addCommand($cmd);
+                            }
                         }
                     }
                 }

@@ -23,30 +23,8 @@ final class SeederManager
      */
     public function getAvailableSeeders(): array
     {
-        $paths = [
-            $this->wire->config->paths->site . 'seeders/'
-        ];
+        $discoverer = new \Totoglu\Console\Support\FeatureDiscoverer($this->wire);
+        return $discoverer->discoverFiles('seeders', '*Seeder.php');
 
-        $modulesPath = $this->wire->config->paths->siteModules;
-        if (is_dir($modulesPath)) {
-            $matchedModules = glob($modulesPath . '*/seeders/', GLOB_ONLYDIR) ?: [];
-            $paths = array_merge($paths, $matchedModules);
-        }
-
-        $seeders = [];
-
-        foreach ($paths as $path) {
-            if (is_dir($path)) {
-                $files = glob($path . '*Seeder.php');
-                if ($files) {
-                    foreach ($files as $file) {
-                        $seederName = basename($file, '.php');
-                        $seeders[$seederName] = $file;
-                    }
-                }
-            }
-        }
-
-        return $seeders;
     }
 }

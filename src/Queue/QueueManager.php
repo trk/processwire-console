@@ -89,39 +89,8 @@ final class QueueManager
      */
     public function discoverQueues(): array
     {
-        $classes = [];
-        
-        // 1. Check site/queue/
-        $siteQueuePath = $this->sitePath . 'queue/';
-        if (is_dir($siteQueuePath)) {
-            $files = glob($siteQueuePath . '*Queue.php');
-            if ($files !== false) {
-                foreach ($files as $file) {
-                    $classes[basename($file, '.php')] = $file;
-                }
-            }
-        }
-        
-        // 2. Check site/modules/*/queue/
-        $modulesPath = $this->sitePath . 'modules/';
-        if (is_dir($modulesPath)) {
-            $dirs = glob($modulesPath . '*', GLOB_ONLYDIR);
-            if ($dirs !== false) {
-                foreach ($dirs as $dir) {
-                    $modQueuePath = $dir . '/queue/';
-                    if (is_dir($modQueuePath)) {
-                        $files = glob($modQueuePath . '*Queue.php');
-                        if ($files !== false) {
-                            foreach ($files as $file) {
-                                $classes[basename($file, '.php')] = $file;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        return $classes;
+        $discoverer = new \Totoglu\Console\Support\FeatureDiscoverer(\ProcessWire\wire());
+        return $discoverer->discoverFiles('queue', '*Queue.php');
     }
 
     /**

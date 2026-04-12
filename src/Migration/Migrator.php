@@ -40,25 +40,33 @@ final class Migrator
     }
 
     /**
-     * Discover all migration files in the migrations directory.
+     * Map of basename => full path
+     * @var array<string, string>
+     */
+    private array $filesMap = [];
+    private bool $filesDiscovered = false;
+
+    /**
+     * Resolve the map of migrations natively.
+     */
+    private function getFilesMap(): array
+    {
+        if (!$this->filesDiscovered) {
+            $discoverer = new \Totoglu\Console\Support\FeatureDiscoverer(\ProcessWire\wire());
+            $this->filesMap = $discoverer->discoverFiles('migrations', '*.php', null);
+            $this->filesDiscovered = true;
+        }
+        return $this->filesMap;
+    }
+
+    /**
+     * Discover all migration files in the migrations directory and modules.
      *
      * @return string[] Sorted list of migration file basenames (without path)
      */
     public function discoverFiles(): array
     {
-        $path = $this->getMigrationsPath();
-        if (!is_dir($path)) {
-            return [];
-        }
-
-        $files = glob($path . '*.php');
-        if ($files === false || empty($files)) {
-            return [];
-        }
-
-        sort($files);
-
-        return array_map('basename', $files);
+        return array_keys($this->getFilesMap());
     }
 
     /**
@@ -205,12 +213,12 @@ final class Migrator
      */
     private function resolve(string $file): object
     {
-        $path = $this->getMigrationsPath() . $file;
-        if (!is_file($path)) {
-            throw new \RuntimeException("Migration file not found: {$path}");
+        $map = $this->getFilesMap();
+        if (!isset($map[$file]) || !is_file($map[$file])) {
+            throw new \RuntimeException("Migration file not found: {$file}");
         }
 
-        $instance = require $path;
+        $instance = require $map[$file];
 
         if (!is_object($instance)) {
             throw new \RuntimeException("Migration '{$file}' must return an anonymous class instance.");

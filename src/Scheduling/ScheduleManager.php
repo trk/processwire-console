@@ -23,30 +23,7 @@ final class ScheduleManager
      */
     public function getAvailableTasks(): array
     {
-        $paths = [
-            $this->wire->config->paths->site . 'schedule/'
-        ];
-
-        $modulesPath = $this->wire->config->paths->siteModules;
-        if (is_dir($modulesPath)) {
-            $matchedModules = glob($modulesPath . '*/schedule/', GLOB_ONLYDIR) ?: [];
-            $paths = array_merge($paths, $matchedModules);
-        }
-
-        $tasks = [];
-
-        foreach ($paths as $path) {
-            if (is_dir($path)) {
-                $files = glob($path . '*Task.php');
-                if ($files) {
-                    foreach ($files as $file) {
-                        $taskName = basename($file, '.php');
-                        $tasks[$taskName] = $file;
-                    }
-                }
-            }
-        }
-
-        return $tasks;
+        $discoverer = new \Totoglu\Console\Support\FeatureDiscoverer($this->wire);
+        return $discoverer->discoverFiles('schedule', '*Task.php');
     }
 }
