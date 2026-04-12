@@ -41,6 +41,10 @@ final class TestCommand extends Command
                     return Command::FAILURE;
                 }
                 
+                if (!is_dir($projectRoot . '/tests')) {
+                    mkdir($projectRoot . '/tests');
+                }
+                
                 // Init Pest
                 passthru(escapeshellarg($pestBinary) . ' --init');
             } else {
