@@ -36,6 +36,7 @@
   - [Migrations](#migrations)
   - [Queues](#queues)
   - [Database Seeding](#database-seeding)
+  - [Testing](#testing)
   - [Task Scheduling](#task-scheduling)
   - [Maintenance Mode](#maintenance-mode)
   - [Tinker (REPL)](#tinker-repl)
@@ -69,7 +70,8 @@ ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills th
 | Scheduling | 1 command | Run due scheduled tasks |
 | Maintenance | 2 commands | Put the application up or down |
 | Runtime | 2 commands | Interactive REPL, command listing |
-| **Total** | **71 commands** | |
+| Testing | 2 commands | Run tests, scaffold test files |
+| **Total** | **73 commands** | |
 
 Every command supports `--json` for machine-readable output, `--dry-run` for safe previews, and `--force` for non-interactive scripting.
 
@@ -1075,6 +1077,48 @@ php vendor/bin/wire db:seed
 
 # Run a specific seeder class
 php vendor/bin/wire db:seed --class=UsersSeeder
+```
+
+---
+
+### Testing
+
+ProcessWire Console integrates **Pest PHP** natively to bring beautiful, modern Test-Driven Development (TDD) to ProcessWire.
+
+> **Tip:** If Pest is not installed on your system when you run the `test` command, the console will detect it and elegantly prompt you to install it and automatically scaffold the `tests/Pest.php` config. 
+
+Our intelligent `FeatureDiscoverer` auto-magically locates all Pest tests placed in:
+1. `/tests/`
+2. `/site/tests/`
+3. `/site/modules/[AnyActiveModule]/tests/`
+
+...and runs them holistically via a single command!
+
+#### `make:test`
+
+Generate a new Pest test stub.
+
+```bash
+# Create a Feature test in site/tests/Feature/
+php vendor/bin/wire make:test UserLoginTest
+
+# Create a Unit test in site/tests/Unit/
+php vendor/bin/wire make:test DataSyncTest --unit
+
+# Create a test inside a specific module's tests/ directory
+php vendor/bin/wire make:test AiOrchestration --module=FieldtypeAiAssistant
+```
+
+#### `test`
+
+Run your Pest test suite. You can pass forward any native Pest arguments (e.g., `--filter`, `--parallel`).
+
+```bash
+# Run all discovered tests across the system and active modules
+php vendor/bin/wire test
+
+# Run tests and filter for "Login"
+php vendor/bin/wire test --filter=Login
 ```
 
 ---
