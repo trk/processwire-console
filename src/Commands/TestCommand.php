@@ -47,6 +47,17 @@ final class TestCommand extends Command
                 
                 // Init Pest
                 passthru(escapeshellarg($pestBinary) . ' --init');
+
+                // Inject ProcessWire Bootstrap to Pest.php if it exists
+                $pestConfigFile = $projectRoot . '/tests/Pest.php';
+                if (file_exists($pestConfigFile)) {
+                    $bootstrapCode = "\n/*\n|--------------------------------------------------------------------------\n| ProcessWire Bootstrap\n|--------------------------------------------------------------------------\n|\n| Boot processwire to make `wire()` and \$pages available in all tests.\n|\n*/\nif (!class_exists('\\\\ProcessWire\\\\ProcessWire')) {\n    require_once dirname(__DIR__) . '/index.php';\n}\n";
+                    $pestConfigContent = file_get_contents($pestConfigFile);
+                    if (!str_contains($pestConfigContent, 'class_exists(\'\\ProcessWire')) {
+                        file_put_contents($pestConfigFile, $pestConfigContent . $bootstrapCode);
+                        \Laravel\Prompts\note('processwire-console automatically injected ProcessWire bootstrap into tests/Pest.php');
+                    }
+                }
             } else {
                 return Command::SUCCESS;
             }
