@@ -62,6 +62,8 @@ use Totoglu\Console\Commands\MakeMigrationCommand;
 use Totoglu\Console\Commands\MakeSeederCommand;
 use Totoglu\Console\Commands\DbSeedCommand;
 use Totoglu\Console\Commands\MakeQueueCommand;
+use Totoglu\Console\Commands\MakeTestCommand;
+use Totoglu\Console\Commands\TestCommand;
 use Totoglu\Console\Commands\MakeTaskCommand;
 use Totoglu\Console\Commands\ScheduleRunCommand;
 use Totoglu\Console\Commands\DownCommand;
@@ -245,6 +247,9 @@ $application->addCommands([
     new VersionCommand(),
     new MakeSeederCommand(),
     new DbSeedCommand(),
+    new MakeTestCommand(),
+    new TestCommand(),
+    
     // Scheduling Commands
     new MakeTaskCommand(),
     new ScheduleRunCommand(),
