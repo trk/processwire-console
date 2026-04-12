@@ -1222,9 +1222,18 @@ Interactive prompts are automatically disabled when:
 
 ## Extending the Console
 
-### Method 1: Drop-in Commands (Site & Modules)
+### Method 1: Module Feature Auto-Discovery
 
-Place command files in `site/commands/` or inside any module at `site/modules/[ModuleName]/commands/`. They are automatically discovered and loaded on every CLI invocation.
+ProcessWire Console features a centralized `FeatureDiscoverer` that automatically locates and registers CLI assets from the root `site/` directory and exclusively from **installed/active** modules. If a module is inactive or uninstalled, its CLI features are safely ignored.
+
+Place the corresponding files inside the target hierarchy (`site/...` or `site/modules/[ModuleName]/...`):
+- `commands/` — Drop-in Symfony Console commands (`*Command.php`)
+- `migrations/` — Database migrations (`*_[name].php`)
+- `seeders/` — Database seeders (`*Seeder.php`)
+- `schedule/` — Scheduled cron tasks (`*Task.php`)
+- `queue/` — Background queue jobs (`*Queue.php`)
+
+They are automatically discovered and loaded on every CLI invocation.
 
 ```php
 <?php
