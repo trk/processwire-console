@@ -36,9 +36,10 @@ final class MigrateResetCommand extends Command
             }
         }
 
-        $result = $asJson
-            ? $migrator->reset()
-            : \Laravel\Prompts\spin(fn() => $migrator->reset(), 'Resetting all migrations...');
+        if (!$asJson) {
+            \Laravel\Prompts\info('Resetting all migrations...');
+        }
+        $result = $migrator->reset();
 
         if ($asJson) {
             $ok = empty($result['errors']);

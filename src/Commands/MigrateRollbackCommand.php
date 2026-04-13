@@ -72,9 +72,10 @@ final class MigrateRollbackCommand extends Command
                 ? $migrator->rollbackSteps($steps)
                 : $migrator->rollbackLastBatch();
         } else {
-            $result = \Laravel\Prompts\spin(fn() => $steps > 0
+            \Laravel\Prompts\info('Rolling back migrations...');
+            $result = $steps > 0
                 ? $migrator->rollbackSteps($steps)
-                : $migrator->rollbackLastBatch(), 'Rolling back migrations...');
+                : $migrator->rollbackLastBatch();
         }
 
         if ($asJson) {

@@ -71,9 +71,10 @@ final class MigrateCommand extends Command
             }
         }
 
-        $result = $asJson 
-            ? $migrator->runPending($steps)
-            : \Laravel\Prompts\spin(fn() => $migrator->runPending($steps), 'Running migrations...');
+        if (!$asJson) {
+            \Laravel\Prompts\info('Running migrations...');
+        }
+        $result = $migrator->runPending($steps);
 
         if ($asJson) {
             $ok = empty($result['errors']);

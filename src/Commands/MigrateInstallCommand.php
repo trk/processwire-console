@@ -36,7 +36,8 @@ final class MigrateInstallCommand extends Command
         }
 
         if (!$asJson) {
-            \Laravel\Prompts\spin(fn() => $repository->ensureTable(), 'Creating migration table...');
+            \Laravel\Prompts\info('Creating migration table...');
+            $repository->ensureTable();
             \Laravel\Prompts\info('Migration table created.');
         } else {
             $repository->ensureTable();

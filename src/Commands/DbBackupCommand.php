@@ -29,10 +29,8 @@ final class DbBackupCommand extends Command
             return Command::FAILURE;
         }
 
-        $file = spin(
-            fn () => $backup->backup(),
-            'Creating database backup...'
-        );
+        info('Creating database backup...');
+        $file = $backup->backup();
 
         if ($file) {
             info("Database backup created: {$file}");

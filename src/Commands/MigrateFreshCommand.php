@@ -39,16 +39,18 @@ final class MigrateFreshCommand extends Command
 
         // Phase 1: Drop table
         if (!$asJson) {
-            \Laravel\Prompts\spin(fn() => $repository->dropTable(), 'Dropping migrations table...');
+            \Laravel\Prompts\info('Dropping migrations table...');
+            $repository->dropTable();
             \Laravel\Prompts\info('Dropped migrations table.');
         } else {
             $repository->dropTable();
         }
 
         // Phase 2: Re-run all
-        $result = $asJson 
-            ? $migrator->runPending() 
-            : \Laravel\Prompts\spin(fn() => $migrator->runPending(), 'Running all migrations...');
+        if (!$asJson) {
+            \Laravel\Prompts\info('Running all migrations...');
+        }
+        $result = $migrator->runPending();
 
         if ($asJson) {
             $ok = empty($result['errors']);

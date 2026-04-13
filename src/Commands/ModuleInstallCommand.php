@@ -69,10 +69,8 @@ final class ModuleInstallCommand extends Command
             if ($asJson) {
                 $modules->install($name);
             } else {
-                spin(
-                    fn () => $modules->install($name),
-                    "Installing module '{$name}'..."
-                );
+                info("Installing module '{$name}'...");
+                $modules->install($name);
             }
         } catch (\Throwable $e) {
             $msg = "Install failed for module '{$name}': " . $e->getMessage();

@@ -90,11 +90,10 @@ final class DbSeedCommand extends Command
             return;
         }
 
-        \Laravel\Prompts\spin(function() use ($fullClassName, $wire, $name) {
-            /** @var Seeder $instance */
-            $instance = new $fullClassName($wire);
-            $instance->run();
-        }, "Seeding: {$name}");
+        \Laravel\Prompts\info("Seeding: {$name}...");
+        /** @var Seeder $instance */
+        $instance = new $fullClassName($wire);
+        $instance->run();
 
         \Laravel\Prompts\note("Seeded: {$name}");
     }

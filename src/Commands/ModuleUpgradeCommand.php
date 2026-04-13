@@ -51,10 +51,8 @@ final class ModuleUpgradeCommand extends Command
                 if ($asJson) {
                     $modules->install($name);
                 } else {
-                    spin(
-                        fn () => $modules->install($name),
-                        "Upgrading module '{$name}'..."
-                    );
+                    info("Upgrading module '{$name}'...");
+                    $modules->install($name);
                 }
             } catch (\Throwable $e) {
                 $msg = "Upgrade step failed for '{$name}': " . $e->getMessage();

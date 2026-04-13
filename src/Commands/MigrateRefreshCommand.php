@@ -38,9 +38,10 @@ final class MigrateRefreshCommand extends Command
         $migrator = new Migrator($repository);
 
         // Phase 1: Reset
-        $resetResult = $asJson
-            ? $migrator->reset()
-            : \Laravel\Prompts\spin(fn() => $migrator->reset(), 'Rolling back all migrations...');
+        if (!$asJson) {
+            \Laravel\Prompts\info('Rolling back all migrations...');
+        }
+        $resetResult = $migrator->reset();
 
         if (!$asJson && !empty($resetResult['rolledBack'])) {
             \Laravel\Prompts\note('Rolling back');
@@ -61,9 +62,10 @@ final class MigrateRefreshCommand extends Command
         }
 
         // Phase 2: Migrate
-        $migrateResult = $asJson
-            ? $migrator->runPending()
-            : \Laravel\Prompts\spin(fn() => $migrator->runPending(), 'Running all migrations...');
+        if (!$asJson) {
+            \Laravel\Prompts\info('Running all migrations...');
+        }
+        $migrateResult = $migrator->runPending();
 
         if (!$asJson && !empty($migrateResult['applied'])) {
             \Laravel\Prompts\note('Migrating');

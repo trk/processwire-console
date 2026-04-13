@@ -72,10 +72,8 @@ final class DbRestoreCommand extends Command
             if ($asJson) {
                 $result = $backup->restore($file);
             } else {
-                $result = spin(
-                    fn () => $backup->restore($file),
-                    "Restoring database from {$file}..."
-                );
+                info("Restoring database from {$file}...");
+                $result = $backup->restore($file);
             }
             if (!$result) {
                 $msg = "Restore returned no result — check the SQL file.";

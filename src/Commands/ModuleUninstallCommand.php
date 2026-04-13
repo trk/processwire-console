@@ -79,10 +79,8 @@ final class ModuleUninstallCommand extends Command
             if ($asJson) {
                 $modules->uninstall($name);
             } else {
-                spin(
-                    fn () => $modules->uninstall($name),
-                    "Uninstalling module '{$name}'..."
-                );
+                info("Uninstalling module '{$name}'...");
+                $modules->uninstall($name);
             }
         } catch (\Throwable $e) {
             $msg = "Uninstall failed for module '{$name}': " . $e->getMessage();
