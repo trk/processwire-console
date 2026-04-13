@@ -8,11 +8,14 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use ProcessWire\Field;
+use Totoglu\Console\Traits\InteractWithProcessWire;
+
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\warning;
-use Totoglu\Console\Traits\InteractWithProcessWire;
+use function ProcessWire\wire;
 
 final class FieldInfoCommand extends Command
 {
@@ -34,7 +37,7 @@ final class FieldInfoCommand extends Command
             return Command::SUCCESS;
         }
 
-        $field = \ProcessWire\wire('fields')->get($name);
+        $field = wire('fields')->get($name);
 
         if (!$field || !$field->id) {
             error("Field '{$name}' not found.");
@@ -70,7 +73,9 @@ final class FieldInfoCommand extends Command
         info("Data Structure");
         $tableName = $field->getTable();
         try {
-            $query = \ProcessWire\wire('database')->prepare("SHOW COLUMNS FROM `{$tableName}`");
+            $db = wire('database');
+            $safeTableName = $db->escapeTable($tableName);
+            $query = $db->prepare("SHOW COLUMNS FROM `{$safeTableName}`");
             $query->execute();
             $tableFields = $query->fetchAll(\PDO::FETCH_ASSOC);
             $columnsData = array_map(fn($col) => [$col['Field'], $col['Type']], $tableFields);
@@ -92,12 +97,12 @@ final class FieldInfoCommand extends Command
             if (strlen((string)$v) > 100) $v = substr((string)$v, 0, 97) . '...';
             $settingsData[] = [$k, (string) $v];
         }
-        
+
         $slicedSettings = array_slice($settingsData, 0, 15);
         if ($slicedSettings) {
-             table(['Setting', 'Value'], $slicedSettings);
+            table(['Setting', 'Value'], $slicedSettings);
         }
-       
+
         if (count($settingsData) > 15) {
             info("... and " . (count($settingsData) - 15) . " more.");
         }
@@ -108,10 +113,10 @@ final class FieldInfoCommand extends Command
     private function getFlagSummary(int $flags): string
     {
         $summary = [];
-        if ($flags & \ProcessWire\Field::flagSystem) $summary[] = 'System';
-        if ($flags & \ProcessWire\Field::flagPermanent) $summary[] = 'Permanent';
-        if ($flags & \ProcessWire\Field::flagGlobal) $summary[] = 'Global';
-        if ($flags & \ProcessWire\Field::flagAutojoin) $summary[] = 'Autojoin';
+        if ($flags & Field::flagSystem) $summary[] = 'System';
+        if ($flags & Field::flagPermanent) $summary[] = 'Permanent';
+        if ($flags & Field::flagGlobal) $summary[] = 'Global';
+        if ($flags & Field::flagAutojoin) $summary[] = 'Autojoin';
 
         return $summary ? implode(' | ', $summary) : 'None';
     }

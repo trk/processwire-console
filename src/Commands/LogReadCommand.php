@@ -10,9 +10,11 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
+
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\note;
+use function ProcessWire\wire;
 
 final class LogReadCommand extends Command
 {
@@ -30,7 +32,7 @@ final class LogReadCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $name = (string) $input->getArgument('name');
-        
+
         if (empty($name)) {
             $name = $this->searchLog('Select a log file');
             if ($name === 'No matching logs found') {
@@ -39,10 +41,20 @@ final class LogReadCommand extends Command
             }
         }
 
+        $sanitizer = wire('sanitizer');
+        $name = preg_replace('/\.txt$/i', '', basename($name));
+        $name = $sanitizer->name((string) $name);
+
         $limit = (int) $input->getArgument('limit');
+        if ($limit < 1) {
+            $limit = 10;
+        }
+        if ($limit > 5000) {
+            $limit = 5000;
+        }
         $sort = strtolower((string) $input->getOption('sort'));
 
-        $log = \ProcessWire\wire('log');
+        $log = wire('log');
         $entries = $log->getEntries($name, ['limit' => $limit]);
 
         if (empty($entries)) {

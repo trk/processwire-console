@@ -6,6 +6,7 @@ namespace Totoglu\Console\Traits;
 
 use function Laravel\Prompts\search;
 use function Laravel\Prompts\multiselect;
+use function ProcessWire\wire;
 
 trait InteractWithProcessWire
 {
@@ -21,7 +22,9 @@ trait InteractWithProcessWire
             label: $label,
             options: function (string $value) {
                 $options = [];
-                $fields = \ProcessWire\wire('fields')->find("name%=$value, limit=15");
+                $sanitizer = wire('sanitizer');
+                $q = $sanitizer->selectorValue($value);
+                $fields = wire('fields')->find("name%=$q, limit=15");
                 foreach ($fields as $field) {
                     $options[] = $field->name;
                 }
@@ -43,7 +46,9 @@ trait InteractWithProcessWire
             label: $label,
             options: function (string $value) {
                 $options = [];
-                $templates = \ProcessWire\wire('templates')->find("name%=$value, limit=15");
+                $sanitizer = wire('sanitizer');
+                $q = $sanitizer->selectorValue($value);
+                $templates = wire('templates')->find("name%=$q, limit=15");
                 foreach ($templates as $template) {
                     $options[] = $template->name;
                 }
@@ -65,7 +70,9 @@ trait InteractWithProcessWire
             label: $label,
             options: function (string $value) {
                 $options = [];
-                $roles = \ProcessWire\wire('roles')->find("name%=$value, limit=15");
+                $sanitizer = wire('sanitizer');
+                $q = $sanitizer->selectorValue($value);
+                $roles = wire('roles')->find("name%=$q, limit=15");
                 foreach ($roles as $role) {
                     $options[] = $role->name;
                 }
@@ -87,7 +94,9 @@ trait InteractWithProcessWire
             label: $label,
             options: function (string $value) {
                 $options = [];
-                $permissions = \ProcessWire\wire('permissions')->find("name%=$value, limit=15");
+                $sanitizer = wire('sanitizer');
+                $q = $sanitizer->selectorValue($value);
+                $permissions = wire('permissions')->find("name%=$q, limit=15");
                 foreach ($permissions as $permission) {
                     $options[] = $permission->name;
                 }
@@ -111,9 +120,9 @@ trait InteractWithProcessWire
                 $options = [];
                 // Search by name or email
                 // Be sure value is sanitized for selector
-                $sanitizer = \ProcessWire\wire('sanitizer');
+                $sanitizer = wire('sanitizer');
                 $q = $sanitizer->selectorValue($value);
-                $users = \ProcessWire\wire('users')->find("name|email%=$q, limit=15");
+                $users = wire('users')->find("name|email%=$q, limit=15");
                 foreach ($users as $user) {
                     $options[] = $user->name;
                 }
@@ -135,9 +144,9 @@ trait InteractWithProcessWire
             label: $label,
             options: function (string $value) {
                 $options = [];
-                $sanitizer = \ProcessWire\wire('sanitizer');
+                $sanitizer = wire('sanitizer');
                 $q = $sanitizer->selectorValue($value);
-                $pages = \ProcessWire\wire('pages')->find("title|path|name%=$q, limit=15");
+                $pages = wire('pages')->find("title|path|name%=$q, limit=15");
                 foreach ($pages as $page) {
                     $options[$page->id] = "{$page->title} ({$page->path})";
                 }
@@ -159,7 +168,7 @@ trait InteractWithProcessWire
             label: $label,
             options: function (string $value) {
                 $options = [];
-                $modules = \ProcessWire\wire('modules');
+                $modules = wire('modules');
                 foreach ($modules->getAll() as $name => $module) {
                     if (empty($value) || stripos($name, $value) !== false) {
                         $options[] = $name;
@@ -187,7 +196,7 @@ trait InteractWithProcessWire
             label: $label,
             options: function (string $value) {
                 $options = [];
-                $modules = \ProcessWire\wire('modules');
+                $modules = wire('modules');
 
                 // ProcessWire often caches this, but we'll get whatever's available
                 $installable = $modules->getInstallable();
@@ -218,7 +227,7 @@ trait InteractWithProcessWire
             label: $label,
             options: function (string $value) {
                 $options = [];
-                $logs = \ProcessWire\wire('log')->getLogs();
+                $logs = wire('log')->getLogs();
                 foreach ($logs as $name => $logInfo) {
                     if (empty($value) || stripos($name, $value) !== false) {
                         $options[] = $name;
@@ -241,7 +250,7 @@ trait InteractWithProcessWire
      */
     protected function multiselectLogs(string $label = 'Select logs to clear'): array
     {
-        $logs = \ProcessWire\wire('log')->getLogs();
+        $logs = wire('log')->getLogs();
         $options = array_keys($logs);
 
         if (empty($options)) {
