@@ -7,6 +7,7 @@ namespace Totoglu\Console\Queue;
 use PDO;
 use Exception;
 use Throwable;
+use ProcessWire\WireDatabasePDO;
 
 /**
  * QueueManager
@@ -15,7 +16,12 @@ use Throwable;
  */
 final class QueueManager
 {
-    private PDO $db;
+    /**
+     * ProcessWire database wrapper (PDO-like API).
+     *
+     * Note: ProcessWire's $database is a WireDatabasePDO wrapper, not a native PDO instance.
+     */
+    private WireDatabasePDO $db;
     private string $sitePath;
 
     public function __construct()
