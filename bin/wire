@@ -157,10 +157,10 @@ try {
     // Database or config issue - continue to show basic CLI helps
 }
 
-$consoleVersion = '1.0.0';
+$consoleVersion = '0.1.0';
 if (class_exists('\Composer\InstalledVersions')) {
     try {
-        $consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '1.0.0';
+        $consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.1.0';
     } catch (\Throwable $e) {}
 }
 

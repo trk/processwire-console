@@ -720,7 +720,7 @@ php vendor/bin/wire make:module MyModule \
   --title="My Custom Module" \
   --summary="Does amazing things" \
   --author="Developer Name" \
-  --mod-version=1.0.0 \
+  --mod-version=0.1.0 \
   --autoload
 ```
 
