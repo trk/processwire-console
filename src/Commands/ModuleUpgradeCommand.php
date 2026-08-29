@@ -12,7 +12,6 @@ use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\warning;
-use function Laravel\Prompts\spin;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class ModuleUpgradeCommand extends Command
@@ -34,7 +33,7 @@ final class ModuleUpgradeCommand extends Command
 
         if (!$name && !$asJson) {
             $name = $this->searchInstalledModule('Select a module to upgrade');
-            if ($name === 'No matching modules found') return Command::SUCCESS;
+            if (empty($name)) return Command::SUCCESS;
         }
 
         if (!$name) {
@@ -74,4 +73,3 @@ final class ModuleUpgradeCommand extends Command
         return Command::SUCCESS;
     }
 }
-

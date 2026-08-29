@@ -28,7 +28,7 @@ trait InteractWithProcessWire
                 foreach ($fields as $field) {
                     $options[] = $field->name;
                 }
-                return empty($options) ? ['No matching fields found'] : $options;
+                return $options;
             },
             placeholder: 'Type field name...'
         );
@@ -52,7 +52,7 @@ trait InteractWithProcessWire
                 foreach ($templates as $template) {
                     $options[] = $template->name;
                 }
-                return empty($options) ? ['No matching templates found'] : $options;
+                return $options;
             },
             placeholder: 'Type template name...'
         );
@@ -76,7 +76,7 @@ trait InteractWithProcessWire
                 foreach ($roles as $role) {
                     $options[] = $role->name;
                 }
-                return empty($options) ? ['No matching roles found'] : $options;
+                return $options;
             },
             placeholder: 'Type role name...'
         );
@@ -100,7 +100,7 @@ trait InteractWithProcessWire
                 foreach ($permissions as $permission) {
                     $options[] = $permission->name;
                 }
-                return empty($options) ? ['No matching permissions found'] : $options;
+                return $options;
             },
             placeholder: 'Type permission name...'
         );
@@ -126,7 +126,7 @@ trait InteractWithProcessWire
                 foreach ($users as $user) {
                     $options[] = $user->name;
                 }
-                return empty($options) ? ['No matching users found'] : $options;
+                return $options;
             },
             placeholder: 'Type user name or email...'
         );
@@ -150,7 +150,7 @@ trait InteractWithProcessWire
                 foreach ($pages as $page) {
                     $options[$page->id] = "{$page->title} ({$page->path})";
                 }
-                return empty($options) ? ['' => 'No matching pages found'] : $options;
+                return $options;
             },
             placeholder: 'Type page title or path...'
         );
@@ -178,7 +178,7 @@ trait InteractWithProcessWire
                 // Limit to 15
                 $options = array_slice($options, 0, 15);
 
-                return empty($options) ? ['No matching modules found'] : $options;
+                return $options;
             },
             placeholder: 'Type module name...'
         );
@@ -209,7 +209,7 @@ trait InteractWithProcessWire
 
                 $options = array_slice($options, 0, 15);
 
-                return empty($options) ? ['No matching installable modules found'] : $options;
+                return $options;
             },
             placeholder: 'Type module name...'
         );
@@ -236,7 +236,7 @@ trait InteractWithProcessWire
 
                 $options = array_slice($options, 0, 15);
 
-                return empty($options) ? ['No matching logs found'] : $options;
+                return $options;
             },
             placeholder: 'Type log name...'
         );

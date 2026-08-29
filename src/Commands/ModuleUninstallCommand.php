@@ -13,7 +13,6 @@ use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\warning;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\spin;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class ModuleUninstallCommand extends Command
@@ -39,7 +38,7 @@ final class ModuleUninstallCommand extends Command
 
         if (!$name && !$asJson) {
             $name = $this->searchInstalledModule('Select a module to uninstall');
-            if ($name === 'No matching modules found') return Command::SUCCESS;
+            if (empty($name)) return Command::SUCCESS;
         }
 
         if (!$name) {
@@ -100,4 +99,3 @@ final class ModuleUninstallCommand extends Command
         return Command::SUCCESS;
     }
 }
-

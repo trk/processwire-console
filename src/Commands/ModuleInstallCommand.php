@@ -11,7 +11,6 @@ use Symfony\Component\Console\Output\OutputInterface;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
-use function Laravel\Prompts\spin;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class ModuleInstallCommand extends Command
@@ -35,7 +34,7 @@ final class ModuleInstallCommand extends Command
 
         if (!$name && !$asJson) {
             $name = $this->searchInstallableModule('Select a module to install');
-            if ($name === 'No matching installable modules found') return Command::SUCCESS;
+            if (empty($name)) return Command::SUCCESS;
         }
 
         if (!$name) {
@@ -90,4 +89,3 @@ final class ModuleInstallCommand extends Command
         return Command::SUCCESS;
     }
 }
-
