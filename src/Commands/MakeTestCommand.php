@@ -56,13 +56,11 @@ final class MakeTestCommand extends Command
         }
 
         $stubPath = __DIR__ . '/../../resources/stubs/pest.stub';
-        
-        if (!file_exists($stubPath)) {
+        $content = file_get_contents($stubPath);
+        if ($content === false) {
             \Laravel\Prompts\error("Stub file not found: pest.stub");
             return Command::FAILURE;
         }
-
-        $content = (string)file_get_contents($stubPath);
 
         // Standard pest test has no classes, so we can just drop it directly.
         // If we wanted to replace generic names, we could.

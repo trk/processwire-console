@@ -35,28 +35,26 @@ final class TestCommand extends Command
                 \Laravel\Prompts\info('Installing PestPHP...');
                 $code = 0;
                 passthru('composer require pestphp/pest --dev', $code);
-                
+
                 if ($code !== 0) {
                     \Laravel\Prompts\error('Failed to install Pest. Please install manually.');
                     return Command::FAILURE;
                 }
-                
+
                 if (!is_dir($projectRoot . '/tests')) {
                     mkdir($projectRoot . '/tests');
                 }
-                
+
                 // Init Pest
                 passthru(escapeshellarg($pestBinary) . ' --init');
 
                 // Inject ProcessWire Bootstrap to Pest.php if it exists
                 $pestConfigFile = $projectRoot . '/tests/Pest.php';
-                if (file_exists($pestConfigFile)) {
-                    $bootstrapCode = "\n/*\n|--------------------------------------------------------------------------\n| ProcessWire Bootstrap\n|--------------------------------------------------------------------------\n|\n| Boot processwire to make `wire()` and \$pages available in all tests.\n|\n*/\nif (!class_exists('\\\\ProcessWire\\\\ProcessWire')) {\n    require_once dirname(__DIR__) . '/index.php';\n}\n";
-                    $pestConfigContent = file_get_contents($pestConfigFile);
-                    if (!str_contains($pestConfigContent, 'class_exists(\'\\ProcessWire')) {
-                        file_put_contents($pestConfigFile, $pestConfigContent . $bootstrapCode);
-                        \Laravel\Prompts\note('processwire-console automatically injected ProcessWire bootstrap into tests/Pest.php');
-                    }
+                $bootstrapCode = "\n/*\n|--------------------------------------------------------------------------\n| ProcessWire Bootstrap\n|--------------------------------------------------------------------------\n|\n| Boot processwire to make `wire()` and \$pages available in all tests.\n|\n*/\nif (!class_exists('\\\\ProcessWire\\\\ProcessWire')) {\n    require_once dirname(__DIR__) . '/index.php';\n}\n";
+                $pestConfigContent = file_get_contents($pestConfigFile);
+                if ($pestConfigContent !== false && !str_contains($pestConfigContent, 'class_exists(\'\\ProcessWire')) {
+                    file_put_contents($pestConfigFile, $pestConfigContent . $bootstrapCode);
+                    \Laravel\Prompts\note('processwire-console automatically injected ProcessWire bootstrap into tests/Pest.php');
                 }
             } else {
                 return Command::SUCCESS;
@@ -65,7 +63,7 @@ final class TestCommand extends Command
 
         $discoverer = new FeatureDiscoverer(\ProcessWire\wire());
         $moduleTestPaths = $discoverer->getFeaturePaths('tests');
-        
+
         $executionPaths = [];
 
         $rootTestsDir = $projectRoot . '/tests/';
@@ -80,7 +78,7 @@ final class TestCommand extends Command
         $argv = $_SERVER['argv'];
         $forwardArgs = [];
         $foundTest = false;
-        
+
         foreach ($argv as $arg) {
             if ($foundTest) {
                 $forwardArgs[] = $arg;
@@ -98,7 +96,7 @@ final class TestCommand extends Command
         }
 
         $commandParts = [escapeshellarg($pestBinary)];
-        
+
         if (!$hasPathArg && !empty($executionPaths)) {
             // Auto discovery overrides
             foreach ($executionPaths as $path) {
@@ -114,16 +112,8 @@ final class TestCommand extends Command
 
         $commandStr = implode(' ', $commandParts);
 
-        // Run pest in the project root
-        $descriptorspec = [
-            0 => ["pty"],
-            1 => ["pty"],
-            2 => ["pty"]
-        ];
-
-        // Instead of proc_open, passthru is usually sufficient unless output buffers
         $exitCode = 0;
-        
+
         $currentDir = getcwd();
         chdir($projectRoot);
         passthru($commandStr, $exitCode);

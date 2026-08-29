@@ -33,7 +33,7 @@ final class MakeModuleCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $name = $input->getArgument('name') ? (string)$input->getArgument('name') : '';
-        
+
         if (!$name) {
             $name = text(
                 label: 'What is the name of the module? (e.g. HelloWorld)',
@@ -69,20 +69,16 @@ final class MakeModuleCommand extends Command
 
         $stubPath = __DIR__ . '/../../resources/stubs/' . $stubFile;
 
-        if (file_exists($stubPath)) {
-            $content = file_get_contents($stubPath);
+        $content = file_get_contents($stubPath);
+        if ($content !== false) {
             $content = str_replace(
                 ['{{className}}', '{{title}}', '{{summary}}', '{{author}}', '{{name}}'],
                 [$name, $title, $summary, $author, strtolower($name)],
                 $content
             );
             $content = str_replace("'version' => '0.0.1'", "'version' => '{$version}'", $content);
-            if ($type === 'module') {
-                if ($autoloadFlag) {
-                    $content = str_replace("'autoload' => true", "'autoload' => true", $content);
-                } else {
-                    $content = str_replace("'autoload' => true", "'autoload' => false", $content);
-                }
+            if ($type === 'module' && !$autoloadFlag) {
+                $content = str_replace("'autoload' => true", "'autoload' => false", $content);
             }
         } else {
             $content = "<?php\n\nnamespace ProcessWire;\n\nclass {$name} extends WireData implements Module {\n    public static function getModuleInfo() {\n        return ['title' => '{$name}', 'version' => '0.0.1'];\n    }\n}";

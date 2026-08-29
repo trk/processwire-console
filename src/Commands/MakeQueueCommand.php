@@ -55,13 +55,11 @@ final class MakeQueueCommand extends Command
         }
 
         $stubPath = __DIR__ . '/../../resources/stubs/queue.stub';
-        
-        if (!file_exists($stubPath)) {
+        $content = file_get_contents($stubPath);
+        if ($content === false) {
             \Laravel\Prompts\error("Stub file not found: queue.stub");
             return Command::FAILURE;
         }
-
-        $content = (string)file_get_contents($stubPath);
 
         // Replacements
         $content = str_replace(

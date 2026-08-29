@@ -53,13 +53,11 @@ final class MakeSeederCommand extends Command
         }
 
         $stubPath = __DIR__ . '/../../resources/stubs/seeder.stub';
-        
-        if (!file_exists($stubPath)) {
+        $content = file_get_contents($stubPath);
+        if ($content === false) {
             \Laravel\Prompts\error("Stub file not found: seeder.stub");
             return Command::FAILURE;
         }
-
-        $content = (string)file_get_contents($stubPath);
 
         $content = str_replace(
             ['{{namespace}}', '{{class}}'],
