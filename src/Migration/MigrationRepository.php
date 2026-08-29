@@ -24,7 +24,15 @@ final class MigrationRepository
         $table = $db->escapeTable(self::TABLE);
 
         $engine = $config->dbEngine ?: 'InnoDB';
+        $allowedEngines = ['InnoDB', 'MyISAM', 'Aria', 'MEMORY', 'ARCHIVE'];
+        if (!in_array($engine, $allowedEngines, true)) {
+            $engine = 'InnoDB';
+        }
+
         $charset = $config->dbCharset ?: 'utf8mb4';
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $charset)) {
+            $charset = 'utf8mb4';
+        }
 
         $db->exec("
             CREATE TABLE IF NOT EXISTS `{$table}` (

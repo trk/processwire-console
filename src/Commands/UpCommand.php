@@ -26,7 +26,7 @@ final class UpCommand extends Command
         }
 
         try {
-            $file = $wire->config->paths->assets . 'down.json';
+            $file = $wire->config->paths->site . 'down.json';
 
             if (!file_exists($file)) {
                 \Laravel\Prompts\info('Application is already up.');

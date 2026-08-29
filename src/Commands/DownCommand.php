@@ -31,7 +31,7 @@ final class DownCommand extends Command
         }
 
         try {
-            $file = $wire->config->paths->assets . 'down.json';
+            $file = $wire->config->paths->site . 'down.json';
 
             if (file_exists($file)) {
                 \Laravel\Prompts\warning('Application is already down.');
@@ -47,14 +47,16 @@ final class DownCommand extends Command
             ];
 
             file_put_contents($file, json_encode($payload, JSON_PRETTY_PRINT));
+            @chmod($file, 0600);
 
             \Laravel\Prompts\info('Application is now in maintenance mode.');
             
             \Laravel\Prompts\note(
-                "Note: Make sure your site/init.php checks for this file and handles the response. \n" .
+                "Note: The maintenance flag file is stored at site/down.json (NOT web-accessible).\n" .
+                "Make sure your site/init.php checks for this file and handles the response. \n" .
                 "Example snippet for site/init.php:\n" .
-                "if (file_exists(\$config->paths->assets . 'down.json')) {\n" . 
-                "    \$down = json_decode(file_get_contents(\$config->paths->assets . 'down.json'), true);\n" . 
+                "if (file_exists(\$config->paths->site . 'down.json')) {\n" . 
+                "    \$down = json_decode(file_get_contents(\$config->paths->site . 'down.json'), true);\n" . 
                 "    // verify \$down['secret'] from \$_GET or \$_COOKIE, otherwise exit / redirect\n" . 
                 "    if(empty(\$down['secret']) || \$input->get('secret') !== \$down['secret']) {\n" . 
                 "       if(!empty(\$down['redirect'])) \$session->redirect(\$down['redirect']);\n" .
