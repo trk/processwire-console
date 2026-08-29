@@ -12,7 +12,6 @@ use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\spin;
 
 final class DbRestoreCommand extends Command
 {
