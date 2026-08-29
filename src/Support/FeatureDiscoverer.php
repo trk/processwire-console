@@ -43,6 +43,7 @@ final class FeatureDiscoverer
             $matchedDirs = glob($modulesPath . '*/' . trim($featureFolderName, '/') . '/', GLOB_ONLYDIR);
             if ($matchedDirs !== false) {
                 foreach ($matchedDirs as $dir) {
+                    $dir = str_replace('\\', '/', $dir);
                     $parts = explode('/', trim($dir, '/'));
                     array_pop($parts); // remove featureFolderName
                     $moduleName = array_pop($parts); // get module name
