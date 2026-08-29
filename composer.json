@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "post-install-cmd": [
-      "php -r \"if (!file_exists('../../wire')) { symlink('vendor/bin/wire', '../../wire'); echo 'Linked wire executable to project root.\\n'; } else { echo 'wire executable already exists in project root.\\n'; }\""
+      "php -r \"if (!file_exists('./wire')) { symlink('vendor/bin/wire', './wire'); echo 'Linked wire executable to project root.\\n'; } else { echo 'wire executable already exists in project root.\\n'; }\""
     ],
     "post-update-cmd": [
       "@post-install-cmd"
