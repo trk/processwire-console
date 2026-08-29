@@ -115,7 +115,7 @@ if (!$autoloader || !file_exists($autoloader)) {
 
 $autoloader = realpath($autoloader);
 
-require $autoloader;
+$loader = require $autoloader;
 
 /**
  * Locate ProcessWire root and bootstrap core.
@@ -139,6 +139,29 @@ if (!$pwRoot) {
     exit(1);
 }
 
+// Additional PSR-4 autoloading for site/ subdirectories (seeders, schedule, queue).
+// This allows classes created via make:seeder, make:task, make:queue to be loaded by FQCN
+// when used within CLI commands (e.g. class_exists('Site\Queue\MyQueue')).
+// Note: For web-accessible usage (templates/modules), the user should add the same
+// PSR-4 mapping to their root composer.json: "autoload": { "psr-4": { "Site\\": "site/" } }
+spl_autoload_register(function (string $class) use ($pwRoot): void {
+    $prefixes = [
+        'Site\\Seeders\\'  => 'seeders/',
+        'Site\\Schedule\\' => 'schedule/',
+        'Site\\Queue\\'    => 'queue/',
+    ];
+    foreach ($prefixes as $prefix => $subPath) {
+        if (strncmp($prefix, $class, strlen($prefix)) !== 0) continue;
+        $relative = substr($class, strlen($prefix));
+        $relativeFile = str_replace('\\', '/', $relative) . '.php';
+        $file = rtrim($pwRoot, '/') . '/site/' . $subPath . $relativeFile;
+        if (file_exists($file)) {
+            require_once $file;
+            return;
+        }
+    }
+});
+
 if (!class_exists('\ProcessWire\ProcessWire', false)) {
     require_once($pwRoot . '/wire/core/ProcessWire.php');
 }
@@ -146,6 +169,7 @@ if (!class_exists('\ProcessWire\ProcessWire', false)) {
 // Manual Clean Bootstrap
 $_SERVER['HTTP_HOST'] = 'localhost';
 $wire = null;
+$wireBootstrapError = null;
 
 try {
     $config = \ProcessWire\ProcessWire::buildConfig($pwRoot);
@@ -154,14 +178,55 @@ try {
         $wire = new \ProcessWire\ProcessWire($config);
     }
 } catch (\Throwable $e) {
+    $wireBootstrapError = $e->getMessage();
     // Database or config issue - continue to show basic CLI helps
+    if (in_array('-vvv', $_SERVER['argv'] ?? []) || in_array('--verbose', $_SERVER['argv'] ?? [])) {
+        error_log('[wire-cli] ProcessWire bootstrap failed: ' . $e->getMessage());
+    }
 }
 
-$consoleVersion = '0.1.0';
+// Global safety: If ProcessWire was NOT fully bootstrapped (no DB, config issue),
+// convert fatal "Call to a member function on null" errors from wire() calls
+// into a user-friendly CLI error instead of a PHP Fatal Error.
+if (!($wire instanceof \ProcessWire\ProcessWire)) {
+    set_error_handler(function (int $errno, string $errstr, string $errfile, int $errline): bool {
+        if ($errno === E_ERROR || $errno === E_RECOVERABLE_ERROR) {
+            return false; // Let PHP handle real fatal errors
+        }
+        // Detect "Call to a member function X on null" pattern originating from wire() usage
+        if (stripos($errstr, 'on null') !== false || stripos($errstr, 'to a member function') !== false) {
+            $reason = $GLOBALS['wireBootstrapError'] ?? 'ProcessWire is not fully bootstrapped (database/config may be missing).';
+            fwrite(STDERR, "ERROR: Cannot run this command — ProcessWire environment is unavailable.\n");
+            fwrite(STDERR, "Reason: {$reason}\n");
+            fwrite(STDERR, "Hint: Run 'wire list' or 'wire --help' to see available commands.\n");
+            exit(1);
+        }
+        return false;
+    });
+
+    // Also catch uncaught exceptions from execute() for the same class of issues
+    set_exception_handler(function (\Throwable $e): void {
+        $msg = $e->getMessage();
+        if (stripos($msg, 'null') !== false || stripos($msg, 'not found') !== false || $e instanceof \Error) {
+            $reason = $GLOBALS['wireBootstrapError'] ?? 'ProcessWire is not fully bootstrapped (database/config may be missing).';
+            fwrite(STDERR, "ERROR: Cannot run this command — ProcessWire environment is unavailable.\n");
+            fwrite(STDERR, "Reason: {$reason}\n");
+            fwrite(STDERR, "Hint: Run 'wire list' or 'wire --help' to see available commands.\n");
+            exit(1);
+        }
+        // Other exceptions -> normal Symfony handler will catch if we restore
+        restore_exception_handler();
+        throw $e;
+    });
+}
+
+$consoleVersion = '0.1.1';
 if (class_exists('\Composer\InstalledVersions')) {
     try {
-        $consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.1.0';
-    } catch (\Throwable $e) {}
+        $consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.1.1';
+    } catch (\Throwable $e) {
+        error_log('[wire-cli] Could not resolve console version: ' . $e->getMessage());
+    }
 }
 
 $pwVersion = 'Unknown';
@@ -180,7 +245,9 @@ if (in_array('--version', $argv) || in_array('-V', $argv)) {
         if (class_exists('\Composer\InstalledVersions')) {
             try {
                 $boostVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-boost') ?? 'Unknown';
-            } catch (\Throwable $e) {}
+            } catch (\Throwable $e) {
+                error_log('[wire-cli] Could not resolve boost version: ' . $e->getMessage());
+            }
         }
         echo "ProcessWire Boost $boostVersion\n";
         exit(0);
@@ -249,11 +316,11 @@ $application->addCommands([
     new DbSeedCommand(),
     new MakeTestCommand(),
     new TestCommand(),
-    
+
     // Scheduling Commands
     new MakeTaskCommand(),
     new ScheduleRunCommand(),
-    
+
     // Maintenance Commands
     new DownCommand(),
     new UpCommand(),
@@ -292,16 +359,16 @@ if ($wire instanceof \ProcessWire\ProcessWire) {
                 if ($files) {
                     foreach ($files as $file) {
                         require_once $file;
-                        
-                        // Parse the namespace if it exists (simple regex for basic parsing)
+
+                        // Parse the namespace if it exists (supports both semicolon and bracketed namespaces)
                         $namespace = '';
                         $content = file_get_contents($file);
-                        if (preg_match('/namespace\s+([^;]+);/', $content, $matches)) {
+                        if (preg_match('/namespace\s+([^{;]+)[;{]/', $content, $matches)) {
                             $namespace = trim($matches[1]) . chr(92);
                         }
-                        
+
                         $className = $namespace . basename($file, '.php');
-                        
+
                         if (class_exists($className)) {
                             $cmd = new $className();
                             if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
@@ -317,7 +384,11 @@ if ($wire instanceof \ProcessWire\ProcessWire) {
             }
         }
     } catch (\Throwable $e) {
-        echo "ERR: " . $e . "\n";
+        $verbose = in_array('-v', $_SERVER['argv'] ?? []) || in_array('-vv', $_SERVER['argv'] ?? []) || in_array('-vvv', $_SERVER['argv'] ?? []) || in_array('--verbose', $_SERVER['argv'] ?? []);
+        fwrite(STDERR, "Error during dynamic command discovery: " . $e->getMessage() . "\n");
+        if ($verbose) {
+            fwrite(STDERR, "Stack trace:\n" . $e->getTraceAsString() . "\n");
+        }
     }
 }
 
@@ -390,7 +461,9 @@ try {
         }
     }
 } catch (\Throwable $e) {
-    // ignore discovery errors
+    if (in_array('-vvv', $_SERVER['argv'] ?? []) || in_array('--verbose', $_SERVER['argv'] ?? [])) {
+        error_log('[wire-cli] External package command discovery failed: ' . $e->getMessage());
+    }
 }
 
 $application->run();

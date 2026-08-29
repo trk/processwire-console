@@ -1,7 +1,7 @@
 {
   "name": "trk/processwire-console",
   "description": "A professional CLI tool for ProcessWire CMS.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "library",
   "license": "MIT",
   "require": {
