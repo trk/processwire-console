@@ -41,10 +41,10 @@ final class ScheduleRunCommand extends Command
         foreach ($tasks as $name => $path) {
             require_once $path;
 
-            // Parse namespace
+            // Parse namespace (supports both semicolon and bracketed namespaces)
             $namespace = '';
             $content = (string)file_get_contents($path);
-            if (preg_match('/namespace\s+([^;]+);/', $content, $matches)) {
+            if (preg_match('/namespace\s+([^{;]+)[;{]/', $content, $matches)) {
                 $namespace = trim($matches[1]) . chr(92);
             }
 
