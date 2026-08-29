@@ -21,7 +21,7 @@ final class MakeMigrationCommand extends Command
             ->setDescription('Create a new migration file.')
             ->addArgument('name', InputArgument::REQUIRED, 'Migration name (e.g. create_blog_template)')
             ->addOption('type', 't', InputOption::VALUE_REQUIRED, 'Stub type: blank, create-field, create-template, attach-field, create-page, create-role, install-module', 'blank')
-            ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Field name (for create-field and attach-field types)')
+            ->addOption('field', null, InputOption::VALUE_REQUIRED, 'Field name (for create-field, attach-field, and create-role types)')
             ->addOption('fieldtype', null, InputOption::VALUE_REQUIRED, 'Fieldtype module name (for create-field)', 'FieldtypeText')
             ->addOption('template', null, InputOption::VALUE_REQUIRED, 'Template name (for create-template and attach-field types)')
             ->addOption('label', null, InputOption::VALUE_REQUIRED, 'Label for the created item')
@@ -66,12 +66,11 @@ final class MakeMigrationCommand extends Command
         }
 
         $stubPath = __DIR__ . '/../../resources/stubs/' . $stubFile;
-        if (!file_exists($stubPath)) {
+        $content = file_get_contents($stubPath);
+        if ($content === false) {
             \Laravel\Prompts\error("Stub file not found: {$stubFile}");
             return Command::FAILURE;
         }
-
-        $content = (string)file_get_contents($stubPath);
 
         // Replace placeholders based on type
         $replacements = $this->buildReplacements($input, $name, $type);
