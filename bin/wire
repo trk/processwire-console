@@ -220,10 +220,10 @@ if (!($wire instanceof \ProcessWire\ProcessWire)) {
     });
 }
 
-$consoleVersion = '0.1.1';
+$consoleVersion = '0.1.2';
 if (class_exists('\Composer\InstalledVersions')) {
     try {
-        $consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.1.1';
+        $consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.1.2';
     } catch (\Throwable $e) {
         error_log('[wire-cli] Could not resolve console version: ' . $e->getMessage());
     }
@@ -440,19 +440,26 @@ try {
             if (($repo['type'] ?? '') !== 'path') continue;
             $url = $repo['url'] ?? '';
             if ($url === '') continue;
-            $pkgComposer = $vendorRoot . '/' . trim($url, '/') . '/composer.json';
-            if (!is_file($pkgComposer)) continue;
-            $pkgCfg = json_decode((string)file_get_contents($pkgComposer), true);
-            $extra = $pkgCfg['extra']['processwire-console']['commands'] ?? null;
-            if (is_array($extra)) {
-                foreach ($extra as $fqcn) {
-                    if (is_string($fqcn) && class_exists($fqcn)) {
-                        $cmd = new $fqcn();
-                        if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                            if (method_exists($application, 'add')) {
-                                $application->add($cmd);
-                            } elseif (method_exists($application, 'addCommand')) {
-                                $application->addCommand($cmd);
+            $relUrl = str_starts_with($url, './') ? substr($url, 2) : $url;
+            $basePath = str_starts_with($url, '/') ? $url : $vendorRoot . '/' . $relUrl;
+            $composerFiles = str_contains($basePath, '*')
+                ? glob(rtrim($basePath, '/') . '/composer.json') ?: []
+                : [$basePath . '/composer.json'];
+
+            foreach ($composerFiles as $pkgComposer) {
+                if (!is_file($pkgComposer)) continue;
+                $pkgCfg = json_decode((string)file_get_contents($pkgComposer), true);
+                $extra = $pkgCfg['extra']['processwire-console']['commands'] ?? null;
+                if (is_array($extra)) {
+                    foreach ($extra as $fqcn) {
+                        if (is_string($fqcn) && class_exists($fqcn)) {
+                            $cmd = new $fqcn();
+                            if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
+                                if (method_exists($application, 'add')) {
+                                    $application->add($cmd);
+                                } elseif (method_exists($application, 'addCommand')) {
+                                    $application->addCommand($cmd);
+                                }
                             }
                         }
                     }

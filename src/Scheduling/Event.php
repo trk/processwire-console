@@ -18,7 +18,7 @@ class Event
      */
     protected string $timezone;
 
-    public function __construct(string $timezone = null)
+    public function __construct(?string $timezone = null)
     {
         $this->timezone = $timezone ?: date_default_timezone_get();
     }
