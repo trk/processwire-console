@@ -6,36 +6,48 @@ namespace ProcessWire;
 
 /**
  * {{className}} Fieldtype
- * 
+ *
  * {{summary}}
  */
-class {{className}} extends Fieldtype {
+class {{className}} extends Fieldtype
+{
+	/**
+	 * @return array<string, mixed>
+	 */
+	public static function getModuleInfo(): array
+	{
+		return [
+			'title' => '{{title}}',
+			'version' => '0.0.1',
+			'summary' => '{{summary}}',
+			'installs' => 'Inputfield{{baseName}}',
+		];
+	}
 
-    public static function getModuleInfo() {
-        return [
-            'title' => '{{title}}',
-            'version' => '0.0.1',
-            'summary' => '{{summary}}',
-            'installs' => 'Inputfield{{className}}',
-        ];
-    }
+	/**
+	 * @return array<string, mixed>
+	 */
+	public function ___getDatabaseSchema(Field $field): array
+	{
+		$schema = parent::___getDatabaseSchema($field);
+		$schema['data'] = 'text NOT NULL';
+		return $schema;
+	}
 
-    public function ___getDatabaseSchema(Field $field) {
-        $schema = parent::___getDatabaseSchema($field);
-        $schema['data'] = 'text NOT NULL';
-        return $schema;
-    }
+	public function ___savePageField(Page $page, Field $field): bool
+	{
+		return parent::___savePageField($page, $field);
+	}
 
-    public function ___savePageField(Page $page, Field $field) {
-        return parent::___savePageField($page, $field);
-    }
+	public function ___loadPageField(Page $page, Field $field): mixed
+	{
+		return parent::___loadPageField($page, $field);
+	}
 
-    public function ___loadPageField(Page $page, Field $field) {
-        return parent::___loadPageField($page, $field);
-    }
-
-    public function getInputfield(Page $page, Field $field) {
-        $inputfield = $this->modules->get('Inputfield{{className}}');
-        return $inputfield;
-    }
+	public function getInputfield(Page $page, Field $field): ?Inputfield
+	{
+		/** @var Inputfield|null $inputfield */
+		$inputfield = $this->wire()->modules->get('Inputfield{{baseName}}');
+		return $inputfield;
+	}
 }

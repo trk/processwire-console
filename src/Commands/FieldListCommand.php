@@ -6,87 +6,104 @@ namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Input\InputOption;
-use function Laravel\Prompts\table;
+use Symfony\Component\Console\Output\OutputInterface;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\info;
+use function Laravel\Prompts\table;
 use function Laravel\Prompts\warning;
 
 final class FieldListCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('field:list')
-            ->setDescription('List all fields in the ProcessWire installation.')
-            ->addOption('type', 't', InputOption::VALUE_REQUIRED, 'Filter by field type (e.g., FieldtypeText)')
-            ->addOption('search', 's', InputOption::VALUE_REQUIRED, 'Search fields by name or label')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $type = $input->getOption('type');
-        $search = $input->getOption('search');
+	protected function configure(): void
+	{
+		$this
+			->setName('field:list')
+			->setDescription('List all fields in the ProcessWire installation.')
+			->addOption('type', 't', InputOption::VALUE_REQUIRED, 'Filter by field type (e.g., FieldtypeText)')
+			->addOption('search', 's', InputOption::VALUE_REQUIRED, 'Search fields by name or label')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
+	}
 
-        $fields = \ProcessWire\wire('fields');
-        $filtered = [];
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$type = $input->getOption('type');
+		$search = $input->getOption('search');
+		$asJson = (bool) $input->getOption('json');
 
-        foreach ($fields as $field) {
-            // Apply filtering
-            if ($type && stripos($field->type->className(), $type) === false) continue;
-            if ($search && (stripos($field->name, $search) === false && stripos($field->label, $search) === false)) continue;
+		$fields = \ProcessWire\wire('fields');
+		$filtered = [];
 
-            $filtered[] = $field;
-        }
+		foreach ($fields as $field) {
+			if ($type && stripos($field->type->className(), (string) $type) === false) {
+				continue;
+			}
+			if ($search && (stripos($field->name, (string) $search) === false && stripos((string) $field->label, (string) $search) === false)) {
+				continue;
+			}
 
-        if (empty($filtered)) {
-            warning("No fields found matching criteria.");
-            return Command::SUCCESS;
-        }
+			$filtered[] = $field;
+		}
 
-        $asJson = (bool)$input->getOption('json');
-        if ($asJson) {
-            $items = [];
-            foreach ($filtered as $field) {
-                $templates = array_map(fn($t) => $t->name, iterator_to_array($field->getTemplates()));
-                $flags = [];
-                if ($field->flags & \ProcessWire\Field::flagSystem) $flags[] = 'sys';
-                if ($field->flags & \ProcessWire\Field::flagPermanent) $flags[] = 'perm';
-                $items[] = [
-                    'id' => $field->id,
-                    'name' => $field->name,
-                    'type' => $field->type->className(),
-                    'label' => (string)$field->label,
-                    'contexts' => count($templates),
-                    'flags' => $flags,
-                ];
-            }
-            $output->writeln(json_encode(['ok' => true, 'data' => ['items' => $items, 'total' => count($filtered)]], JSON_UNESCAPED_SLASHES));
-        } else {
-            $headers = ['ID', 'Name', 'Type', 'Label', 'Contexts', 'Flags'];
-            $rows = [];
-            
-            foreach ($filtered as $field) {
-                $templates = array_map(fn($t) => $t->name, iterator_to_array($field->getTemplates()));
-                $flags = [];
-                if ($field->flags & \ProcessWire\Field::flagSystem) $flags[] = 'sys';
-                if ($field->flags & \ProcessWire\Field::flagPermanent) $flags[] = 'perm';
-                
-                $rows[] = [
-                    (string) $field->id,
-                    $field->name,
-                    $field->type->className(),
-                    mb_strimwidth((string)$field->label, 0, 30, '...'),
-                    (string) count($templates),
-                    implode('|', $flags) ?: '-'
-                ];
-            }
-            
-            table(headers: $headers, rows: $rows);
-            info("Total fields: " . count($filtered));
-        }
+		if (empty($filtered)) {
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0]);
+			}
+			warning('No fields found matching criteria.');
+			return Command::SUCCESS;
+		}
 
-        return Command::SUCCESS;
-    }
+		if ($asJson) {
+			$items = [];
+			foreach ($filtered as $field) {
+				$templates = array_map(static fn(object $t): string => (string) $t->name, iterator_to_array($field->getTemplates()));
+				$flags = [];
+				if ($field->flags & \ProcessWire\Field::flagSystem) {
+					$flags[] = 'sys';
+				}
+				if ($field->flags & \ProcessWire\Field::flagPermanent) {
+					$flags[] = 'perm';
+				}
+				$items[] = [
+					'id' => $field->id,
+					'name' => $field->name,
+					'type' => $field->type->className(),
+					'label' => (string) $field->label,
+					'contexts' => count($templates),
+					'flags' => $flags,
+				];
+			}
+			return $this->outputJsonSuccess($output, ['items' => $items, 'total' => count($filtered)]);
+		}
+
+		$headers = ['ID', 'Name', 'Type', 'Label', 'Contexts', 'Flags'];
+		$rows = [];
+
+		foreach ($filtered as $field) {
+			$templates = array_map(fn($t) => $t->name, iterator_to_array($field->getTemplates()));
+			$flags = [];
+			if ($field->flags & \ProcessWire\Field::flagSystem) {
+				$flags[] = 'sys';
+			}
+			if ($field->flags & \ProcessWire\Field::flagPermanent) {
+				$flags[] = 'perm';
+			}
+
+			$rows[] = [
+				(string) $field->id,
+				$field->name,
+				$field->type->className(),
+				mb_strimwidth((string) $field->label, 0, 30, '...'),
+				(string) count($templates),
+				implode('|', $flags) ?: '-',
+			];
+		}
+
+		table(headers: $headers, rows: $rows);
+		info('Total fields: ' . count($filtered));
+
+		return Command::SUCCESS;
+	}
 }

@@ -7,87 +7,70 @@ namespace Totoglu\Console\Commands;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use PDO;
+use Totoglu\Console\Queue\QueueManager;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class QueueRetryCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('queue:retry')
-            ->setDescription('Retry a failed queue job.')
-            ->addArgument('id', InputArgument::REQUIRED, 'The ID of the failed job');
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $id = $input->getArgument('id');
-        $db = \ProcessWire\wire('database');
+	protected function configure(): void
+	{
+		$this
+			->setName('queue:retry')
+			->setDescription('Retry a failed queue job.')
+			->addArgument('id', InputArgument::REQUIRED, 'The ID of the failed job (or "all")')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
+	}
 
-        if ($id === 'all') {
-            // Re-queue all 
-            $this->retryAll($db);
-            return Command::SUCCESS;
-        }
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$id = (string) $input->getArgument('id');
+		$asJson = (bool) $input->getOption('json');
 
-        $jobId = (int)$id;
+		try {
+			$manager = new QueueManager();
 
-        try {
-            $stmt = $db->prepare("SELECT * FROM failed_jobs WHERE id = :id");
-            $stmt->execute([':id' => $jobId]);
-            $job = $stmt->fetch(PDO::FETCH_ASSOC);
+			if ($id === 'all') {
+				$count = $manager->retryAllFailed();
+				if ($asJson) {
+					return $this->outputJsonSuccess($output, ['retried' => $count]);
+				}
+				if ($count === 0) {
+					\Laravel\Prompts\info('No failed jobs found.');
+				} else {
+					\Laravel\Prompts\info("Successfully re-queued {$count} job(s).");
+				}
+				return Command::SUCCESS;
+			}
 
-            if (!$job) {
-                \Laravel\Prompts\error("Failed job with ID [{$jobId}] not found.");
-                return Command::FAILURE;
-            }
+			$jobId = (int) $id;
+			$retried = $manager->retryJob($jobId);
 
-            $this->requeueJob($db, $job);
-            \Laravel\Prompts\info("Job [{$jobId}] has been pushed back onto the queue.");
-            return Command::SUCCESS;
+			if (!$retried) {
+				$msg = "Failed job with ID [{$jobId}] not found.";
+				if ($asJson) {
+					return $this->outputJsonError($output, 'NOT_FOUND', $msg);
+				}
+				\Laravel\Prompts\error($msg);
+				return Command::FAILURE;
+			}
 
-        } catch (\Exception $e) {
-            \Laravel\Prompts\error("Error retrying job: " . $e->getMessage());
-            return Command::FAILURE;
-        }
-    }
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['id' => $jobId, 'retried' => true]);
+			}
 
-    private function retryAll(PDO $db): void
-    {
-        $stmt = $db->query("SELECT * FROM failed_jobs");
-        $jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        if (empty($jobs)) {
-            \Laravel\Prompts\info('No failed jobs found.');
-            return;
-        }
-
-        $count = 0;
-        foreach ($jobs as $job) {
-            $this->requeueJob($db, $job);
-            $count++;
-        }
-
-        \Laravel\Prompts\info("Successfully re-queued {$count} job(s).");
-    }
-
-    private function requeueJob(PDO $db, array $job): void
-    {
-        // 1. Insert back into queue_jobs
-        $insert = $db->prepare("
-            INSERT INTO queue_jobs (queue, payload, attempts, available_at, created_at)
-            VALUES (:queue, :payload, 0, :available_at, :created_at)
-        ");
-        $insert->execute([
-            ':queue' => $job['queue'],
-            ':payload' => $job['payload'],
-            ':available_at' => time(),
-            ':created_at' => time() // Reset created_at so it doesn't look ancient
-        ]);
-
-        // 2. Delete from failed_jobs
-        $delete = $db->prepare("DELETE FROM failed_jobs WHERE id = :id");
-        $delete->execute([':id' => $job['id']]);
-    }
+			\Laravel\Prompts\info("Job [{$jobId}] has been pushed back onto the queue.");
+			return Command::SUCCESS;
+		} catch (\Throwable $e) {
+			$msg = 'Error retrying job: ' . $e->getMessage();
+			if ($asJson) {
+				return $this->outputJsonError($output, 'RETRY_FAILED', $msg);
+			}
+			\Laravel\Prompts\error($msg);
+			return Command::FAILURE;
+		}
+	}
 }

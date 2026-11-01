@@ -8,110 +8,109 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
-use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class TemplateFieldsReorderCommand extends Command
 {
-    use InteractWithProcessWire;
-    protected function configure(): void
-    {
-        $this
-            ->setName('template:fields:reorder')
-            ->setDescription('Reorder fields on a template (moves listed fields in given order to the front).')
-            ->addOption('template', null, InputOption::VALUE_OPTIONAL, 'Template name')
-            ->addOption('order', null, InputOption::VALUE_OPTIONAL, 'Comma-separated field names in desired order (front)')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $templateName = $input->getOption('template');
-        $asJson = (bool)$input->getOption('json');
-        
-        if (!$templateName && !$asJson) {
-            $templateName = $this->searchTemplate('Select the template to reorder fields');
-            if ($templateName === 'No matching templates found') return Command::SUCCESS;
-        }
+	protected function configure(): void
+	{
+		$this
+			->setName('template:fields:reorder')
+			->setDescription('Reorder fields on a template (moves listed fields in given order to the front).')
+			->addOption('template', null, InputOption::VALUE_OPTIONAL, 'Template name')
+			->addOption('fields', null, InputOption::VALUE_OPTIONAL, 'Comma-separated field names in desired order (front)')
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
+	}
 
-        if (!$templateName) {
-            error("Provide --template.");
-            return Command::FAILURE;
-        }
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$templateName = $input->getOption('template');
+		$asJson = (bool) $input->getOption('json');
 
-        $orderStr = $input->getOption('order') ? (string)$input->getOption('order') : '';
-        if (!$orderStr && !$asJson) {
-            $orderStr = text(
-                label: 'Enter comma-separated field names in desired order',
-                required: true
-            );
-        }
+		if (!$templateName && !$asJson) {
+			$templateName = $this->searchTemplate('Select the template to reorder fields');
+			if ($templateName === '') {
+				return Command::SUCCESS;
+			}
+		}
 
-        $dryRun = (bool)$input->getOption('dry-run');
+		if (!$templateName) {
+			$msg = 'Provide --template.';
+			return $asJson ? $this->outputJsonError($output, 'MISSING_TEMPLATE', $msg) : (error($msg) ?? Command::FAILURE);
+		}
 
-        if (!$orderStr) {
-            error("Provide --order.");
-            return Command::FAILURE;
-        }
-        
-        $templates = \ProcessWire\wire('templates');
-        $fields = \ProcessWire\wire('fields');
-        $template = $templates->get($templateName);
-        if (!$template || !$template->id) {
-            error("Template not found: {$templateName}");
-            return Command::FAILURE;
-        }
-        $fg = $template->fieldgroup;
-        $names = array_map('trim', explode(',', $orderStr));
+		$orderRaw = $input->getOption('fields');
+		$orderStr = $orderRaw ? (string) $orderRaw : '';
+		if (!$orderStr && !$asJson) {
+			$orderStr = text(
+				label: 'Enter comma-separated field names in desired order',
+				required: true
+			);
+		}
 
-        // Validate fields exist and are attached (silently skip missing)
-        $valid = [];
-        foreach ($names as $n) {
-            if ($n === '') continue;
-            $f = $fg->getField($n);
-            if ($f) $valid[] = $n;
-        }
+		$dryRun = (bool) $input->getOption('dry-run');
 
-        $result = ['template' => $templateName, 'order' => $valid, 'dryRun' => $dryRun];
-        if ($dryRun) {
-            if ($asJson) {
-                $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
-            } else {
-                note("Dry-run: would move fields to front in order: " . implode(', ', $valid));
-            }
-            return Command::SUCCESS;
-        }
+		if (!$orderStr) {
+			$msg = 'Provide --fields.';
+			return $asJson ? $this->outputJsonError($output, 'MISSING_FIELDS', $msg) : (error($msg) ?? Command::FAILURE);
+		}
 
-        // Move each listed field to end then insert before current first to accumulate order at front
-        foreach (array_reverse($valid) as $n) {
-            $f = $fg->getField($n);
-            if (!$f) continue;
-            // Normalize: remove and add to end
-            $fg->remove($f);
-            $fg->add($f);
-            // Move to front by inserting before first
-            $first = $fg->first();
-            if ($first && $first !== $f) {
-                $fg->insertBefore($f, $first);
-            }
-        }
+		$templates = \ProcessWire\wire('templates');
+		$template = $templates->get((string) $templateName);
+		if (!$template || !$template->id) {
+			$msg = "Template not found: {$templateName}";
+			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		}
+		$fg = $template->fieldgroup;
+		$names = array_map('trim', explode(',', $orderStr));
 
-        if (method_exists($fg, 'save')) {
-            $fg->save();
-        } else {
-            $template->save();
-        }
+		$valid = [];
+		foreach ($names as $n) {
+			if ($n === '') {
+				continue;
+			}
+			$f = $fg->getField($n);
+			if ($f) {
+				$valid[] = $n;
+			}
+		}
 
-        if ($asJson) {
-            $output->writeln(json_encode(['ok' => true, 'data' => $result + ['reordered' => true]], JSON_UNESCAPED_SLASHES));
-        } else {
-            info("Reordered fields on template '{$templateName}'.");
-        }
-        return Command::SUCCESS;
-    }
+		$result = ['template' => $templateName, 'order' => $valid, 'dryRun' => $dryRun];
+		if ($dryRun) {
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, $result);
+			}
+			note('Dry-run: would move fields to front in order: ' . implode(', ', $valid));
+			return Command::SUCCESS;
+		}
+
+		foreach (array_reverse($valid) as $n) {
+			$f = $fg->getField($n);
+			if (!$f) {
+				continue;
+			}
+			$fg->remove($f);
+			$fg->add($f);
+			$first = $fg->first();
+			if ($first && $first !== $f) {
+				$fg->insertBefore($f, $first);
+			}
+		}
+
+		$fg->save();
+
+		if ($asJson) {
+			return $this->outputJsonSuccess($output, $result + ['reordered' => true]);
+		}
+
+		info("Reordered fields on template '{$templateName}'.");
+		return Command::SUCCESS;
+	}
 }
-

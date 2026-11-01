@@ -6,19 +6,19 @@ namespace ProcessWire;
 
 return new class {
 
-    /**
-     * Apply the migration.
-     */
-    public function up(): void
-    {
-        // Your migration logic here
-    }
+	/**
+	 * Apply the migration.
+	 */
+	public function up(): void
+	{
+		// Your migration logic here
+	}
 
-    /**
-     * Reverse the migration.
-     */
-    public function down(): void
-    {
-        // Undo the migration logic here
-    }
+	/**
+	 * Reverse the migration.
+	 */
+	public function down(): void
+	{
+		// Undo the migration logic here
+	}
 };

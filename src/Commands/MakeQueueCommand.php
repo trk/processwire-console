@@ -9,70 +9,33 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class MakeQueueCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('make:queue')
-            ->setDescription('Create a new Queue class.')
-            ->addArgument('name', InputArgument::REQUIRED, 'The name of the Queue class (e.g. SendEmailQueue)')
-            ->addOption('module', 'm', InputOption::VALUE_REQUIRED, 'Module name to place the queue in (e.g. MyCustomModule)');
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $name = (string)$input->getArgument('name');
-        
-        // Ensure name ends with Queue
-        if (!str_ends_with($name, 'Queue')) {
-            $name .= 'Queue';
-        }
+	protected function configure(): void
+	{
+		$this
+			->setName('make:queue')
+			->setDescription('Create a new Queue class.')
+			->addArgument('name', InputArgument::REQUIRED, 'The name of the Queue class (e.g. SendEmailQueue)')
+			->addOption('module', 'm', InputOption::VALUE_REQUIRED, 'Module name to place the queue in (e.g. MyCustomModule)')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
+	}
 
-        $module = $input->getOption('module') ? (string)$input->getOption('module') : null;
-
-        $config = \ProcessWire\wire('config');
-        
-        // Target directory determination
-        if ($module) {
-            $targetDir = $config->paths->siteModules . $module . '/queue/';
-            $namespace = "ProcessWire"; // Standard processwire module namespace
-        } else {
-            $targetDir = $config->paths->site . 'queue/';
-            $namespace = "Site\\Queue"; // Standard site namespace for queues
-        }
-
-        if (!is_dir($targetDir)) {
-            mkdir($targetDir, 0755, true);
-        }
-
-        $filePath = $targetDir . $name . '.php';
-
-        if (file_exists($filePath)) {
-            \Laravel\Prompts\error("Queue file already exists: {$name}.php");
-            return Command::FAILURE;
-        }
-
-        $stubPath = __DIR__ . '/../../resources/stubs/queue.stub';
-        $content = file_get_contents($stubPath);
-        if ($content === false) {
-            \Laravel\Prompts\error("Stub file not found: queue.stub");
-            return Command::FAILURE;
-        }
-
-        // Replacements
-        $content = str_replace(
-            ['{{namespace}}', '{{class}}'],
-            [$namespace, $name],
-            $content
-        );
-
-        file_put_contents($filePath, $content);
-
-        \Laravel\Prompts\info("Created queue class: {$name}");
-        \Laravel\Prompts\note("Path: {$filePath}");
-
-        return Command::SUCCESS;
-    }
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		return $this->scaffoldFeatureClass(
+			input: $input,
+			output: $output,
+			label: 'queue',
+			suffix: 'Queue',
+			directory: 'queue',
+			defaultNamespace: 'Site\\Queue',
+			stubFile: 'queue.stub',
+			successMessagePrefix: 'Created queue class'
+		);
+	}
 }

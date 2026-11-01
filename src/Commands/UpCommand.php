@@ -6,42 +6,60 @@ namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class UpCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('up')
-            ->setDescription('Bring the application out of maintenance mode');
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $wire = \ProcessWire\wire();
-        if (!$wire) {
-            \Laravel\Prompts\error("ProcessWire environment not found.");
-            return Command::FAILURE;
-        }
+	protected function configure(): void
+	{
+		$this
+			->setName('up')
+			->setDescription('Bring the application out of maintenance mode')
+			->addOption('json', null, InputOption::VALUE_NONE, 'Output results as JSON');
+	}
 
-        try {
-            $file = $wire->config->paths->site . 'down.json';
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$json = (bool) $input->getOption('json');
+		$wire = \ProcessWire\wire();
+		if (!$wire) {
+			if ($json) {
+				return $this->outputJsonError($output, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
+			}
+			\Laravel\Prompts\error('ProcessWire environment not found.');
+			return Command::FAILURE;
+		}
 
-            if (!file_exists($file)) {
-                \Laravel\Prompts\info('Application is already up.');
-                return Command::SUCCESS;
-            }
+		try {
+			$file = $wire->config->paths->site . 'down.json';
 
-            @unlink($file);
+			if (!file_exists($file)) {
+				if ($json) {
+					return $this->outputJsonSuccess($output, ['message' => 'Application is already up.']);
+				}
+				\Laravel\Prompts\info('Application is already up.');
+				return Command::SUCCESS;
+			}
 
-            \Laravel\Prompts\info('Application is now live.');
+			@unlink($file);
 
-            return Command::SUCCESS;
+			if ($json) {
+				return $this->outputJsonSuccess($output, ['message' => 'Application is now live.']);
+			}
+			\Laravel\Prompts\info('Application is now live.');
 
-        } catch (\Exception $e) {
-            \Laravel\Prompts\error('Failed to bring application out of maintenance mode: ' . $e->getMessage());
-            return Command::FAILURE;
-        }
-    }
+			return Command::SUCCESS;
+
+		} catch (\Exception $e) {
+			if ($json) {
+				return $this->outputJsonError($output, 'MAINTENANCE_ERROR', 'Failed to bring application out of maintenance mode: ' . $e->getMessage());
+			}
+			\Laravel\Prompts\error('Failed to bring application out of maintenance mode: ' . $e->getMessage());
+			return Command::FAILURE;
+		}
+	}
 }

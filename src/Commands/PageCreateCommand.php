@@ -8,155 +8,161 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Totoglu\Console\Traits\InteractWithProcessWire;
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
-use function Laravel\Prompts\select;
-use function Laravel\Prompts\confirm;
-use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class PageCreateCommand extends Command
 {
-    use InteractWithProcessWire;
+	use InteractWithProcessWire;
 
-    protected function configure(): void
-    {
-        $this
-            ->setName('page:create')
-            ->setDescription('Create a new page under a parent with a given template.')
-            ->addOption('parent', 'p', InputOption::VALUE_OPTIONAL, 'Parent page path or ID')
-            ->addOption('template', 't', InputOption::VALUE_OPTIONAL, 'Template name')
-            ->addOption('name', null, InputOption::VALUE_OPTIONAL, 'Page name (optional, derived from title if omitted)')
-            ->addOption('title', null, InputOption::VALUE_OPTIONAL, 'Page title (optional)')
-            ->addOption('unpublished', null, InputOption::VALUE_NONE, 'Create as unpublished')
-            ->addOption('interactive', 'i', InputOption::VALUE_NONE, 'Prompt for missing values and field inputs')
-            ->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes, only show what would happen')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'Output machine-readable JSON');
-    }
+	protected function configure(): void
+	{
+		$this
+			->setName('page:create')
+			->setDescription('Create a new page under a parent with a given template.')
+			->addOption('parent', 'p', InputOption::VALUE_OPTIONAL, 'Parent page path or ID')
+			->addOption('template', 't', InputOption::VALUE_OPTIONAL, 'Template name')
+			->addOption('name', null, InputOption::VALUE_OPTIONAL, 'Page name (optional, derived from title if omitted)')
+			->addOption('title', null, InputOption::VALUE_OPTIONAL, 'Page title (optional)')
+			->addOption('unpublished', null, InputOption::VALUE_NONE, 'Create as unpublished')
+			->addOption('interactive', 'i', InputOption::VALUE_NONE, 'Prompt for missing values and field inputs')
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes, only show what would happen')
+			->addOption('json', null, InputOption::VALUE_NONE, 'Output machine-readable JSON');
+	}
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $parentArg = (string)$input->getOption('parent');
-        $templateName = (string)$input->getOption('template');
-        $name = $input->getOption('name') ? (string)$input->getOption('name') : null;
-        $title = $input->getOption('title') ? (string)$input->getOption('title') : null;
-        $unpublished = (bool)$input->getOption('unpublished');
-        $wantInteractive = (bool)$input->getOption('interactive');
-        $dryRun = (bool)$input->getOption('dry-run');
-        $asJson = (bool)$input->getOption('json');
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$parentArg = (string) $input->getOption('parent');
+		$templateName = (string) $input->getOption('template');
+		$name = $input->getOption('name') ? (string) $input->getOption('name') : null;
+		$title = $input->getOption('title') ? (string) $input->getOption('title') : null;
+		$unpublished = (bool) $input->getOption('unpublished');
+		$wantInteractive = (bool) $input->getOption('interactive');
+		$dryRun = (bool) $input->getOption('dry-run');
+		$asJson = (bool) $input->getOption('json');
 
-        $pages = \ProcessWire\wire('pages');
-        $templates = \ProcessWire\wire('templates');
-        $sanitizer = \ProcessWire\wire('sanitizer');
+		$pages = \ProcessWire\wire('pages');
+		$templates = \ProcessWire\wire('templates');
+		$sanitizer = \ProcessWire\wire('sanitizer');
 
-        if (($wantInteractive || !$parentArg || !$templateName) && $input->isInteractive() && !$asJson) {
-            if (!$templateName) {
-                $templateName = $this->searchTemplate('Select template');
-                if ($templateName === 'No matching templates found' || $templateName === '') return Command::SUCCESS;
-            }
-            if (!$parentArg) {
-                $parentArg = (string)$this->searchPage('Select parent page');
-                if ($parentArg === '' || str_starts_with($parentArg, 'No matching')) return Command::SUCCESS;
-            }
-            if (!$title) {
-                $title = text('Title', required: false);
-            }
-            if (!$name) {
-                $defaultName = $title ? $sanitizer->pageName($title, true) : null;
-                $name = text('Name', default: $defaultName ?? '', required: false);
-                if ($name === '' && $defaultName) $name = $defaultName;
-            }
-        }
+		if (($wantInteractive || !$parentArg || !$templateName) && $input->isInteractive() && !$asJson) {
+			if (!$templateName) {
+				$templateName = $this->searchTemplate('Select template');
+				if ($templateName === '') {
+					return Command::SUCCESS;
+				}
+			}
+			if (!$parentArg) {
+				$parentArg = (string) $this->searchPage('Select parent page');
+				if ($parentArg === '') {
+					return Command::SUCCESS;
+				}
+			}
+			if (!$title) {
+				$title = text('Title', required: false);
+			}
+			if (!$name) {
+				$defaultName = $title ? $sanitizer->pageName($title, true) : null;
+				$name = text('Name', default: $defaultName ?? '', required: false);
+				if ($name === '' && $defaultName) {
+					$name = $defaultName;
+				}
+			}
+		}
 
-        if (!$parentArg || !$templateName) {
-            error("Provide --parent and --template.");
-            return Command::FAILURE;
-        }
+		if (!$parentArg || !$templateName) {
+			$msg = 'Provide --parent and --template.';
+			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+		}
 
-        $parent = is_numeric($parentArg) ? $pages->get((int)$parentArg) : $pages->get($parentArg);
-        if (!$parent || !$parent->id) {
-            error("Parent not found: {$parentArg}");
-            return Command::FAILURE;
-        }
+		$parent = is_numeric($parentArg) ? $pages->get((int) $parentArg) : $pages->get($parentArg);
+		if (!$parent || !$parent->id) {
+			$msg = "Parent not found: {$parentArg}";
+			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		}
 
-        $template = $templates->get($templateName);
-        if (!$template || !$template->id) {
-            error("Template not found: {$templateName}");
-            return Command::FAILURE;
-        }
+		$template = $templates->get($templateName);
+		if (!$template || !$template->id) {
+			$msg = "Template not found: {$templateName}";
+			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		}
 
-        if (!$name && $title) {
-            $name = $sanitizer->pageName($title, true);
-        }
+		if (!$name && $title) {
+			$name = $sanitizer->pageName($title, true);
+		}
 
-        if (!$name) {
-            $name = 'page-' . date('Ymd-His');
-        }
+		if (!$name) {
+			$name = 'page-' . date('Ymd-His');
+		}
 
-        $result = [
-            'parent' => $parent->path,
-            'template' => $templateName,
-            'name' => $name,
-            'title' => $title ?? '',
-            'status' => $unpublished ? 'unpublished' : 'published',
-            'dryRun' => $dryRun,
-        ];
+		$result = [
+			'parent' => $parent->path,
+			'template' => $templateName,
+			'name' => $name,
+			'title' => $title ?? '',
+			'status' => $unpublished ? 'unpublished' : 'published',
+			'dryRun' => $dryRun,
+		];
 
-        if ($dryRun) {
-            if ($asJson) {
-                $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
-            } else {
-                note("Dry-run: would create page '{$name}' under '{$parent->path}' with template '{$templateName}'.");
-            }
-            return Command::SUCCESS;
-        }
+		if ($dryRun) {
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, $result);
+			}
+			note("Dry-run: would create page '{$name}' under '{$parent->path}' with template '{$templateName}'.");
+			return Command::SUCCESS;
+		}
 
-        $page = new \ProcessWire\Page();
-        $page->template = $template;
-        $page->parent = $parent;
-        $page->name = $name;
-        if ($title) {
-            $page->title = $title;
-        }
-        if ($unpublished) {
-            $page->addStatus(\ProcessWire\Page::statusUnpublished);
-        }
-        if (($wantInteractive || (!$input->getOption('title') && !$input->getOption('name'))) && $input->isInteractive() && !$asJson) {
-            $fill = confirm('Fill template fields now?', default: false);
-            if ($fill) {
-                foreach ($template->fieldgroup as $f) {
-                    $fname = $f->name;
-                    if ($fname === 'title') continue;
-                    $ftype = $f->type;
-                    $label = $f->label ?: $fname;
-                    $desc = $f->description ?: '';
-                    $prompt = trim($label . ($desc ? " — {$desc}" : ''));
-                    $val = null;
-                    if ($ftype instanceof \ProcessWire\FieldtypeText) {
-                        $val = text($prompt, required: false);
-                        $val = $sanitizer->text($val);
-                    } elseif ($ftype instanceof \ProcessWire\FieldtypeTextarea) {
-                        $val = text($prompt, required: false);
-                        $val = $sanitizer->textarea($val);
-                    }
-                    if ($val !== null && $val !== '') {
-                        $page->set($fname, $val);
-                    }
-                }
-            }
-        }
-        $page->save();
+		$page = new \ProcessWire\Page();
+		$page->template = $template;
+		$page->parent = $parent;
+		$page->name = $name;
+		if ($title) {
+			$page->title = $title;
+		}
+		if ($unpublished) {
+			$page->addStatus(\ProcessWire\Page::statusUnpublished);
+		}
+		if (($wantInteractive || (!$input->getOption('title') && !$input->getOption('name'))) && $input->isInteractive() && !$asJson) {
+			$fill = confirm('Fill template fields now?', default: false);
+			if ($fill) {
+				foreach ($template->fieldgroup as $f) {
+					$fname = $f->name;
+					if ($fname === 'title') {
+						continue;
+					}
+					$ftype = $f->type;
+					$label = $f->label ?: $fname;
+					$desc = $f->description ?: '';
+					$prompt = trim($label . ($desc ? " — {$desc}" : ''));
+					$val = null;
+					if ($ftype instanceof \ProcessWire\FieldtypeText) {
+						$val = text($prompt, required: false);
+						$val = $sanitizer->text($val);
+					} elseif ($ftype instanceof \ProcessWire\FieldtypeTextarea) {
+						$val = text($prompt, required: false);
+						$val = $sanitizer->textarea($val);
+					}
+					if ($val !== null && $val !== '') {
+						$page->set($fname, $val);
+					}
+				}
+			}
+		}
+		$page->save();
 
-        $result['id'] = $page->id;
-        $result['url'] = $page->url;
+		$result['id'] = $page->id;
+		$result['url'] = $page->url;
 
-        if ($asJson) {
-            $output->writeln(json_encode(['ok' => true, 'data' => $result], JSON_UNESCAPED_SLASHES));
-        } else {
-            info("Created page #{$page->id} at {$page->url} (template: {$templateName})");
-        }
+		if ($asJson) {
+			return $this->outputJsonSuccess($output, $result);
+		}
 
-        return Command::SUCCESS;
-    }
+		info("Created page #{$page->id} at {$page->url} (template: {$templateName})");
+
+		return Command::SUCCESS;
+	}
 }

@@ -6,119 +6,144 @@ namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Support\FeatureDiscoverer;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class TestCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('test')
-            ->setDescription('Run the application tests using Pest.')
-            ->ignoreValidationErrors();
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $config = \ProcessWire\wire('config');
-        $projectRoot = dirname(rtrim($config->paths->site, '/'));
-        $pestBinary = $projectRoot . '/vendor/bin/pest';
+	protected function configure(): void
+	{
+		$this
+			->setName('test')
+			->setDescription('Run the application tests using Pest.')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output')
+			->ignoreValidationErrors();
+	}
 
-        if (!file_exists($pestBinary)) {
-            $install = \Laravel\Prompts\confirm(
-                label: 'Pest is not installed. Would you like to install it now via composer?',
-                default: true
-            );
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$asJson = (bool) $input->getOption('json');
+		$config = \ProcessWire\wire('config');
+		$projectRoot = dirname(rtrim($config->paths->site, '/'));
+		$pestBinary = $projectRoot . '/vendor/bin/pest';
 
-            if ($install) {
-                \Laravel\Prompts\info('Installing PestPHP...');
-                $code = 0;
-                passthru('composer require pestphp/pest --dev', $code);
+		if (!file_exists($pestBinary)) {
+			if ($asJson) {
+				return $this->outputJsonError($output, 'PEST_NOT_FOUND', 'Pest binary not found at vendor/bin/pest.');
+			}
 
-                if ($code !== 0) {
-                    \Laravel\Prompts\error('Failed to install Pest. Please install manually.');
-                    return Command::FAILURE;
-                }
+			$install = \Laravel\Prompts\confirm(
+				label: 'Pest is not installed. Would you like to install it now via composer?',
+				default: true
+			);
 
-                if (!is_dir($projectRoot . '/tests')) {
-                    mkdir($projectRoot . '/tests');
-                }
+			if ($install) {
+				\Laravel\Prompts\info('Installing PestPHP...');
+				$code = 0;
+				passthru('composer require pestphp/pest --dev', $code);
 
-                // Init Pest
-                passthru(escapeshellarg($pestBinary) . ' --init');
+				if ($code !== 0) {
+					\Laravel\Prompts\error('Failed to install Pest. Please install manually.');
+					return Command::FAILURE;
+				}
 
-                // Inject ProcessWire Bootstrap to Pest.php if it exists
-                $pestConfigFile = $projectRoot . '/tests/Pest.php';
-                $bootstrapCode = "\n/*\n|--------------------------------------------------------------------------\n| ProcessWire Bootstrap\n|--------------------------------------------------------------------------\n|\n| Boot processwire to make `wire()` and \$pages available in all tests.\n|\n*/\nif (!class_exists('\\\\ProcessWire\\\\ProcessWire')) {\n    require_once dirname(__DIR__) . '/index.php';\n}\n";
-                $pestConfigContent = file_get_contents($pestConfigFile);
-                if ($pestConfigContent !== false && !str_contains($pestConfigContent, 'class_exists(\'\\ProcessWire')) {
-                    file_put_contents($pestConfigFile, $pestConfigContent . $bootstrapCode);
-                    \Laravel\Prompts\note('processwire-console automatically injected ProcessWire bootstrap into tests/Pest.php');
-                }
-            } else {
-                return Command::SUCCESS;
-            }
-        }
+				if (!is_dir($projectRoot . '/tests')) {
+					mkdir($projectRoot . '/tests');
+				}
 
-        $discoverer = new FeatureDiscoverer(\ProcessWire\wire());
-        $moduleTestPaths = $discoverer->getFeaturePaths('tests');
+				// Init Pest
+				passthru(escapeshellarg($pestBinary) . ' --init');
 
-        $executionPaths = [];
+				// Inject ProcessWire Bootstrap to Pest.php if it exists
+				$pestConfigFile = $projectRoot . '/tests/Pest.php';
+				$bootstrapCode = "\n/*\n|--------------------------------------------------------------------------\n| ProcessWire Bootstrap\n|--------------------------------------------------------------------------\n|\n| Boot processwire to make `wire()` and \$pages available in all tests.\n|\n*/\nif (!class_exists('\\\\ProcessWire\\\\ProcessWire')) {\n\trequire_once dirname(__DIR__) . '/index.php';\n}\n";
+				$pestConfigContent = file_get_contents($pestConfigFile);
+				if ($pestConfigContent !== false && !str_contains($pestConfigContent, 'class_exists(\'\\ProcessWire')) {
+					file_put_contents($pestConfigFile, $pestConfigContent . $bootstrapCode);
+					\Laravel\Prompts\note('processwire-console automatically injected ProcessWire bootstrap into tests/Pest.php');
+				}
+			} else {
+				return Command::SUCCESS;
+			}
+		}
 
-        $rootTestsDir = $projectRoot . '/tests/';
-        if (is_dir($rootTestsDir)) {
-            $executionPaths[] = $rootTestsDir;
-        }
+		$discoverer = new FeatureDiscoverer(\ProcessWire\wire());
+		$moduleTestPaths = $discoverer->discoverPaths('tests');
 
-        foreach ($moduleTestPaths as $mPath) {
-            $executionPaths[] = $mPath;
-        }
+		$executionPaths = [];
 
-        $argv = $_SERVER['argv'];
-        $forwardArgs = [];
-        $foundTest = false;
+		$rootTestsDir = $projectRoot . '/tests/';
+		if (is_dir($rootTestsDir)) {
+			$executionPaths[] = $rootTestsDir;
+		}
 
-        foreach ($argv as $arg) {
-            if ($foundTest) {
-                $forwardArgs[] = $arg;
-            } elseif ($arg === 'test') {
-                $foundTest = true;
-            }
-        }
+		foreach ($moduleTestPaths as $mPath) {
+			$executionPaths[] = $mPath;
+		}
 
-        $hasPathArg = false;
-        foreach ($forwardArgs as $arg) {
-            if (!str_starts_with($arg, '-')) {
-                $hasPathArg = true;
-                break;
-            }
-        }
+		$argv = $_SERVER['argv'] ?? [];
+		$forwardArgs = [];
+		$foundTest = false;
 
-        $commandParts = [escapeshellarg($pestBinary)];
+		foreach ($argv as $arg) {
+			if ($foundTest) {
+				if ($arg === '--json') {
+					continue;
+				}
+				$forwardArgs[] = $arg;
+			} elseif ($arg === 'test') {
+				$foundTest = true;
+			}
+		}
 
-        if (!$hasPathArg && !empty($executionPaths)) {
-            // Auto discovery overrides
-            foreach ($executionPaths as $path) {
-                // Pass relative path to make pest output prettier
-                $relativePath = str_replace($projectRoot . '/', '', $path);
-                $commandParts[] = escapeshellarg($relativePath);
-            }
-        }
+		$hasPathArg = false;
+		foreach ($forwardArgs as $arg) {
+			if (!str_starts_with($arg, '-')) {
+				$hasPathArg = true;
+				break;
+			}
+		}
 
-        foreach ($forwardArgs as $arg) {
-            $commandParts[] = escapeshellarg($arg);
-        }
+		$commandParts = [escapeshellarg($pestBinary)];
 
-        $commandStr = implode(' ', $commandParts);
+		if (!$hasPathArg && !empty($executionPaths)) {
+			foreach ($executionPaths as $path) {
+				$relativePath = str_replace($projectRoot . '/', '', $path);
+				$commandParts[] = escapeshellarg($relativePath);
+			}
+		}
 
-        $exitCode = 0;
+		foreach ($forwardArgs as $arg) {
+			$commandParts[] = escapeshellarg($arg);
+		}
 
-        $currentDir = getcwd();
-        chdir($projectRoot);
-        passthru($commandStr, $exitCode);
-        chdir($currentDir);
+		$commandStr = implode(' ', $commandParts);
+		$exitCode = 0;
+		$currentDir = getcwd() ?: $projectRoot;
+		chdir($projectRoot);
 
-        return $exitCode;
-    }
+		if ($asJson) {
+			$lines = [];
+			exec($commandStr . ' 2>&1', $lines, $exitCode);
+			chdir($currentDir);
+			$payload = [
+				'command' => $commandStr,
+				'exitCode' => $exitCode,
+				'output' => implode("\n", $lines),
+			];
+			if ($exitCode !== 0) {
+				return $this->outputJsonError($output, 'TESTS_FAILED', implode("\n", $lines));
+			}
+			return $this->outputJsonSuccess($output, $payload);
+		}
+
+		passthru($commandStr, $exitCode);
+		chdir($currentDir);
+
+		return $exitCode;
+	}
 }

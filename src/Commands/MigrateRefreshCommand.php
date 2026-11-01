@@ -9,92 +9,91 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Migration\Migrator;
-use Totoglu\Console\Migration\MigrationRepository;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class MigrateRefreshCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('migrate:refresh')
-            ->setDescription('Reset all migrations and re-run them (rollback + migrate).')
-            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $force = (bool)$input->getOption('force');
-        $asJson = (bool)$input->getOption('json');
+	protected function configure(): void
+	{
+		$this
+			->setName('migrate:refresh')
+			->setDescription('Reset all migrations and re-run them (rollback + migrate).')
+			->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
+	}
 
-        if (!$force && !$asJson) {
-            if (!\Laravel\Prompts\confirm('This will rollback ALL migrations and re-run them. Continue?', default: false)) {
-                \Laravel\Prompts\note('Aborted.');
-                return Command::SUCCESS;
-            }
-        }
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$force = (bool) $input->getOption('force');
+		$asJson = (bool) $input->getOption('json');
 
-        $repository = new MigrationRepository();
-        $migrator = new Migrator($repository);
+		if (!$force) {
+			if ($asJson) {
+				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run migrate:refresh non-interactively with --json.');
+			}
+			if (!\Laravel\Prompts\confirm('This will rollback ALL migrations and re-run them. Continue?', default: false)) {
+				\Laravel\Prompts\note('Aborted.');
+				return Command::SUCCESS;
+			}
+		}
 
-        // Phase 1: Reset
-        if (!$asJson) {
-            \Laravel\Prompts\info('Rolling back all migrations...');
-        }
-        $resetResult = $migrator->reset();
+		$migrator = new Migrator();
 
-        if (!$asJson && !empty($resetResult['rolledBack'])) {
-            \Laravel\Prompts\note('Rolling back');
-            foreach ($resetResult['rolledBack'] as $file) {
-                \Laravel\Prompts\warning("  ↩ {$file}");
-            }
-        }
+		if (!$asJson) {
+			\Laravel\Prompts\info('Rolling back all migrations...');
+		}
+		$resetResult = $migrator->reset();
 
-        if (!empty($resetResult['errors'])) {
-            if ($asJson) {
-                $output->writeln(json_encode(['ok' => false, 'data' => ['phase' => 'reset', 'result' => $resetResult]], JSON_UNESCAPED_SLASHES));
-            } else {
-                foreach ($resetResult['errors'] as $error) {
-                    \Laravel\Prompts\error($error);
-                }
-            }
-            return Command::FAILURE;
-        }
+		if (!$asJson && !empty($resetResult['rolledBack'])) {
+			\Laravel\Prompts\note('Rolling back');
+			foreach ($resetResult['rolledBack'] as $file) {
+				\Laravel\Prompts\warning("  ↩ {$file}");
+			}
+		}
 
-        // Phase 2: Migrate
-        if (!$asJson) {
-            \Laravel\Prompts\info('Running all migrations...');
-        }
-        $migrateResult = $migrator->runPending();
+		if (!empty($resetResult['errors'])) {
+			if ($asJson) {
+				return $this->outputJsonError($output, 'RESET_FAILED', implode('; ', $resetResult['errors']));
+			}
+			foreach ($resetResult['errors'] as $error) {
+				\Laravel\Prompts\error($error);
+			}
+			return Command::FAILURE;
+		}
 
-        if (!$asJson && !empty($migrateResult['applied'])) {
-            \Laravel\Prompts\note('Migrating');
-            foreach ($migrateResult['applied'] as $file) {
-                \Laravel\Prompts\info("  ✓ {$file}");
-            }
-        }
+		if (!$asJson) {
+			\Laravel\Prompts\info('Running all migrations...');
+		}
+		$migrateResult = $migrator->runPending();
 
-        if ($asJson) {
-            $ok = empty($migrateResult['errors']);
-            $output->writeln(json_encode([
-                'ok' => $ok,
-                'data' => [
-                    'rolledBack' => $resetResult['rolledBack'],
-                    'applied' => $migrateResult['applied'],
-                    'errors' => $migrateResult['errors'],
-                ],
-            ], JSON_UNESCAPED_SLASHES));
-            return $ok ? Command::SUCCESS : Command::FAILURE;
-        }
+		if (!$asJson && !empty($migrateResult['applied'])) {
+			\Laravel\Prompts\note('Migrating');
+			foreach ($migrateResult['applied'] as $file) {
+				\Laravel\Prompts\info("  ✓ {$file}");
+			}
+		}
 
-        if (!empty($migrateResult['errors'])) {
-            foreach ($migrateResult['errors'] as $error) {
-                \Laravel\Prompts\error($error);
-            }
-            return Command::FAILURE;
-        }
+		if ($asJson) {
+			if (!empty($migrateResult['errors'])) {
+				return $this->outputJsonError($output, 'MIGRATION_FAILED', implode('; ', $migrateResult['errors']));
+			}
+			return $this->outputJsonSuccess($output, [
+				'rolledBack' => $resetResult['rolledBack'],
+				'applied' => $migrateResult['applied'],
+				'errors' => $migrateResult['errors'],
+			]);
+		}
 
-        \Laravel\Prompts\info("Refreshed: rolled back " . count($resetResult['rolledBack']) . ", applied " . count($migrateResult['applied']) . " migration(s).");
-        return Command::SUCCESS;
-    }
+		if (!empty($migrateResult['errors'])) {
+			foreach ($migrateResult['errors'] as $error) {
+				\Laravel\Prompts\error($error);
+			}
+			return Command::FAILURE;
+		}
+
+		\Laravel\Prompts\info('Refreshed: rolled back ' . count($resetResult['rolledBack']) . ', applied ' . count($migrateResult['applied']) . ' migration(s).');
+		return Command::SUCCESS;
+	}
 }

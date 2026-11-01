@@ -6,76 +6,85 @@ namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Totoglu\Console\Scheduling\ScheduleManager;
-use Totoglu\Console\Scheduling\Task;
 use Totoglu\Console\Scheduling\Event;
+use Totoglu\Console\Scheduling\Task;
+use Totoglu\Console\Support\FeatureDiscoverer;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 
 final class ScheduleRunCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('schedule:run')
-            ->setDescription('Run the scheduled commands');
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $wire = \ProcessWire\wire();
-        if (!$wire) {
-            \Laravel\Prompts\error("ProcessWire environment not found.");
-            return Command::FAILURE;
-        }
+	protected function configure(): void
+	{
+		$this
+			->setName('schedule:run')
+			->setDescription('Run the scheduled commands')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
+	}
 
-        $manager = new ScheduleManager($wire);
-        $tasks = $manager->getAvailableTasks();
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$asJson = (bool) $input->getOption('json');
+		$wire = \ProcessWire\wire();
+		if (!$wire) {
+			$msg = 'ProcessWire environment not found.';
+			if ($asJson) {
+				return $this->outputJsonError($output, 'ENV_NOT_FOUND', $msg);
+			}
+			\Laravel\Prompts\error($msg);
+			return Command::FAILURE;
+		}
 
-        if (empty($tasks)) {
-            \Laravel\Prompts\info("No scheduled tasks found.");
-            return Command::SUCCESS;
-        }
+		$discoverer = new FeatureDiscoverer($wire);
+		$tasks = $discoverer->discoverClasses('schedule', '*Task.php', Task::class);
 
-        $ranAny = false;
+		if (empty($tasks)) {
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['executed' => [], 'errors' => []]);
+			}
+			\Laravel\Prompts\info('No scheduled tasks found.');
+			return Command::SUCCESS;
+		}
 
-        foreach ($tasks as $name => $path) {
-            require_once $path;
+		$executed = [];
+		$errors = [];
 
-            // Parse namespace (supports both semicolon and bracketed namespaces)
-            $namespace = '';
-            $content = (string)file_get_contents($path);
-            if (preg_match('/namespace\s+([^{;]+)[;{]/', $content, $matches)) {
-                $namespace = trim($matches[1]) . chr(92);
-            }
+		foreach ($tasks as $name => $fqcn) {
+			/** @var Task $instance */
+			$instance = new $fqcn($wire);
+			$event = new Event();
+			$instance->schedule($event);
 
-            $fullClassName = $namespace . $name;
+			if ($event->isDue()) {
+				if (!$asJson) {
+					\Laravel\Prompts\info("Running scheduled task: {$name}");
+				}
+				try {
+					$instance->handle();
+					$executed[] = $name;
+				} catch (\Throwable $e) {
+					$errors[$name] = $e->getMessage();
+					if (!$asJson) {
+						\Laravel\Prompts\error("Task {$name} failed: " . $e->getMessage());
+					}
+				}
+			}
+		}
 
-            if (!class_exists($fullClassName)) {
-                continue;
-            }
+		if ($asJson) {
+			return $this->outputJsonSuccess($output, [
+				'executed' => $executed,
+				'errors' => $errors,
+			]);
+		}
 
-            /** @var Task $instance */
-            $instance = new $fullClassName($wire);
-            $event = new Event();
-            
-            // Build the schedule via the task's schedule logic
-            $instance->schedule($event);
+		if (empty($executed) && empty($errors)) {
+			\Laravel\Prompts\info('No scheduled commands are ready to run.');
+		}
 
-            if ($event->isDue()) {
-                $ranAny = true;
-                \Laravel\Prompts\info("Running scheduled task: {$name}");
-                try {
-                    $instance->handle();
-                } catch (\Throwable $e) {
-                    \Laravel\Prompts\error("Task {$name} failed: " . $e->getMessage());
-                }
-            }
-        }
-
-        if (!$ranAny) {
-            \Laravel\Prompts\info('No scheduled commands are ready to run.');
-        }
-
-        return Command::SUCCESS;
-    }
+		return Command::SUCCESS;
+	}
 }

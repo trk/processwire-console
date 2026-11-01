@@ -6,40 +6,40 @@ namespace ProcessWire;
 
 return new class {
 
-    private string $moduleName = '{{name}}';
+	private string $moduleName = '{{name}}';
 
-    public function up(): void
-    {
-        $modules = wire('modules');
-        $modules->refresh();
+	public function up(): void
+	{
+		$modules = wire('modules');
+		$modules->refresh();
 
-        if (!$modules->isInstallable($this->moduleName)) {
-            throw new \RuntimeException("Module '{$this->moduleName}' is not installable. Ensure it exists in site/modules/.");
-        }
+		if (!$modules->isInstallable($this->moduleName)) {
+			throw new \RuntimeException("Module '{$this->moduleName}' is not installable. Ensure it exists in site/modules/.");
+		}
 
-        $modules->install($this->moduleName);
-    }
+		$modules->install($this->moduleName);
+	}
 
-    public function down(): void
-    {
-        $modules = wire('modules');
+	public function down(): void
+	{
+		$modules = wire('modules');
 
-        if (!$modules->isInstalled($this->moduleName)) {
-            return;
-        }
+		if (!$modules->isInstalled($this->moduleName)) {
+			return;
+		}
 
-        // Guard: check if other installed modules depend on this one
-        $info = $modules->getModuleInfoVerbose($this->moduleName);
-        $requiredBy = $info['requiredBy'] ?? [];
-        $installedDeps = array_filter($requiredBy, fn(string $m): bool => $modules->isInstalled($m));
+		// Guard: check if other installed modules depend on this one
+		$info = $modules->getModuleInfoVerbose($this->moduleName);
+		$requiredBy = $info['requiredBy'] ?? [];
+		$installedDeps = array_filter($requiredBy, fn(string $m): bool => $modules->isInstalled($m));
 
-        if (!empty($installedDeps)) {
-            throw new WireException(
-                "Cannot uninstall module '{$this->moduleName}' — required by: " . implode(', ', $installedDeps) . ". "
-                . "Uninstall dependent modules first."
-            );
-        }
+		if (!empty($installedDeps)) {
+			throw new WireException(
+				"Cannot uninstall module '{$this->moduleName}' — required by: " . implode(', ', $installedDeps) . ". "
+				. "Uninstall dependent modules first."
+			);
+		}
 
-        $modules->uninstall($this->moduleName);
-    }
+		$modules->uninstall($this->moduleName);
+	}
 };

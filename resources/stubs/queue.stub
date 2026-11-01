@@ -13,14 +13,14 @@ use Totoglu\Console\Queue\Queue;
  */
 class {{class}} extends Queue
 {
-    /**
-     * Execute the job.
-     *
-     * @param array<string, mixed> $payload The associated payload data from the dispatcher
-     */
-    public function handle(array $payload): void
-    {
-        // ... perform your logic here. E.g.:
-        // $value = $payload['example'] ?? null;
-    }
+	/**
+	 * Execute the job.
+	 *
+	 * @param array<string, mixed> $payload The associated payload data from the dispatcher
+	 */
+	public function handle(array $payload): void
+	{
+		// ... perform your logic here. E.g.:
+		// $value = $payload['example'] ?? null;
+	}
 }

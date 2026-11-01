@@ -6,38 +6,48 @@ namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 
 final class DbBackupCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('db:backup')
-            ->setDescription('Create a database backup.');
-    }
+	use InteractWithProcessWire;
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
+	protected function configure(): void
+	{
+		$this
+			->setName('db:backup')
+			->setDescription('Create a database backup.')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
+	}
 
-        $backup = \ProcessWire\wire('database')->backups();
-        if (!$backup) {
-            error("Database backup tool not available.");
-            return Command::FAILURE;
-        }
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$asJson = (bool) $input->getOption('json');
+		$backup = \ProcessWire\wire('database')->backups();
+		if (!$backup) {
+			$msg = 'Database backup tool not available.';
+			return $asJson ? $this->outputJsonError($output, 'UNAVAILABLE', $msg) : (error($msg) ?? Command::FAILURE);
+		}
 
-        info('Creating database backup...');
-        $file = $backup->backup();
+		if (!$asJson) {
+			info('Creating database backup...');
+		}
 
-        if ($file) {
-            info("Database backup created: {$file}");
-        } else {
-            error("Database backup failed.");
-            return Command::FAILURE;
-        }
+		$file = $backup->backup();
 
-        return Command::SUCCESS;
-    }
+		if ($file) {
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['file' => (string) $file]);
+			}
+			info("Database backup created: {$file}");
+			return Command::SUCCESS;
+		}
+
+		$msg = 'Database backup failed.';
+		return $asJson ? $this->outputJsonError($output, 'BACKUP_FAILED', $msg) : (error($msg) ?? Command::FAILURE);
+	}
 }

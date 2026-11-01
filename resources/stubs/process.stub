@@ -6,26 +6,31 @@ namespace ProcessWire;
 
 /**
  * {{className}} Process Module
- * 
+ *
  * {{summary}}
  */
-class {{className}} extends Process {
+class {{className}} extends Process
+{
+	/**
+	 * @return array<string, mixed>
+	 */
+	public static function getModuleInfo(): array
+	{
+		return [
+			'title' => '{{title}}',
+			'version' => '0.0.1',
+			'summary' => '{{summary}}',
+			'permission' => '{{className}}',
+			'page' => [
+				'name' => '{{name}}',
+				'parent' => 'setup',
+				'title' => '{{title}}',
+			],
+		];
+	}
 
-    public static function getModuleInfo() {
-        return [
-            'title' => '{{title}}',
-            'version' => '0.0.1',
-            'summary' => '{{summary}}',
-            'permission' => '{{className}}',
-            'page' => [
-                'name' => '{{name}}',
-                'parent' => 'setup',
-                'title' => '{{title}}',
-            ],
-        ];
-    }
-
-    public function ___execute() {
-        return "<h2>Hello from {{title}}</h2>";
-    }
+	public function ___execute(): string
+	{
+		return "<h2>Hello from {{title}}</h2>";
+	}
 }

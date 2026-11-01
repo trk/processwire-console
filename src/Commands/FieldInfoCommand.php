@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Totoglu\Console\Commands;
 
+use ProcessWire\Field;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use ProcessWire\Field;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\table;
@@ -19,105 +19,155 @@ use function ProcessWire\wire;
 
 final class FieldInfoCommand extends Command
 {
-    use InteractWithProcessWire;
+	use InteractWithProcessWire;
 
-    protected function configure(): void
-    {
-        $this
-            ->setName('field:info')
-            ->setDescription('Show detailed information about a field, including technical details.')
-            ->addArgument('name', InputArgument::OPTIONAL, 'The name of the field');
-    }
+	protected function configure(): void
+	{
+		$this
+			->setName('field:info')
+			->setDescription('Show detailed information about a field, including technical details.')
+			->addArgument('name', InputArgument::OPTIONAL, 'The name of the field')
+			->addOption('name', null, InputOption::VALUE_OPTIONAL, 'The name of the field')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
+	}
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $name = $input->getArgument('name') ?? $this->searchField('Search for a field to view info');
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$asJson = (bool) $input->getOption('json');
+		$name = $input->getOption('name') ?: $input->getArgument('name');
 
-        if ($name === 'No matching fields found') {
-            return Command::SUCCESS;
-        }
+		if (!$name && !$asJson) {
+			$name = $this->searchField('Search for a field to view info');
+			if ($name === '') {
+				return Command::SUCCESS;
+			}
+		}
 
-        $field = wire('fields')->get($name);
+		if (!$name) {
+			$msg = 'Provide field name via argument or --name.';
+			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+		}
 
-        if (!$field || !$field->id) {
-            error("Field '{$name}' not found.");
-            return Command::FAILURE;
-        }
+		$field = wire('fields')->get((string) $name);
 
-        info("Field Technical Insights: {$field->name}");
+		if (!$field || !$field->id) {
+			$msg = "Field '{$name}' not found.";
+			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		}
 
-        $general = [
-            ["ID", (string) $field->id],
-            ["Name", $field->name],
-            ["Label", $field->label ?: '-'],
-            ["Type", $field->type->className()],
-            ["Table", $field->getTable()],
-            ["Flags", $this->getFlagSummary($field->flags)],
-        ];
+		$templates = array_values(array_map(static fn(object $t): string => (string) $t->name, iterator_to_array($field->getTemplates())));
+		$tableName = $field->getTable();
+		$columns = [];
+		try {
+			$db = wire('database');
+			$safeTableName = $db->escapeTable($tableName);
+			$query = $db->prepare("SHOW COLUMNS FROM `{$safeTableName}`");
+			$query->execute();
+			$tableFields = $query->fetchAll(\PDO::FETCH_ASSOC);
+			foreach ($tableFields as $col) {
+				$columns[] = ['column' => $col['Field'], 'type' => $col['Type']];
+			}
+		} catch (\Throwable $e) {
+			if (!$asJson) {
+				warning('Could not fetch table structure: ' . $e->getMessage());
+			}
+		}
 
-        table(
-            headers: ['Property', 'Value'],
-            rows: $general
-        );
+		$data = $field->getArray();
+		$settings = [];
+		foreach ($data as $k => $v) {
+			if (is_array($v)) {
+				$v = 'Array(...)';
+			}
+			if (is_object($v)) {
+				$v = get_class($v);
+			}
+			$settings[$k] = (string) $v;
+		}
 
-        // Templates
-        $templates = array_map(fn($t) => $t->name, iterator_to_array($field->getTemplates()));
-        info("Template Usage (" . count($templates) . ")");
-        if ($templates) {
-            info(implode(', ', $templates));
-        } else {
-            warning('Not used in any templates');
-        }
+		if ($asJson) {
+			return $this->outputJsonSuccess($output, [
+				'id' => $field->id,
+				'name' => $field->name,
+				'label' => (string) ($field->label ?: ''),
+				'type' => $field->type->className(),
+				'table' => $tableName,
+				'flags' => $this->getFlagSummary($field->flags),
+				'templates' => $templates,
+				'columns' => $columns,
+				'settings' => $settings,
+			]);
+		}
 
-        // Data Structure
-        info("Data Structure");
-        $tableName = $field->getTable();
-        try {
-            $db = wire('database');
-            $safeTableName = $db->escapeTable($tableName);
-            $query = $db->prepare("SHOW COLUMNS FROM `{$safeTableName}`");
-            $query->execute();
-            $tableFields = $query->fetchAll(\PDO::FETCH_ASSOC);
-            $columnsData = array_map(fn($col) => [$col['Field'], $col['Type']], $tableFields);
-            table(
-                headers: ['Column', 'DataType'],
-                rows: $columnsData
-            );
-        } catch (\Exception $e) {
-            warning("Could not fetch table structure: " . $e->getMessage());
-        }
+		info("Field Technical Insights: {$field->name}");
 
-        // Settings (Compact)
-        info("Settings (Non-Default)");
-        $data = $field->getArray();
-        $settingsData = [];
-        foreach ($data as $k => $v) {
-            if (is_array($v)) $v = 'Array(...)';
-            if (is_object($v)) $v = get_class($v);
-            if (strlen((string)$v) > 100) $v = substr((string)$v, 0, 97) . '...';
-            $settingsData[] = [$k, (string) $v];
-        }
+		$general = [
+			['ID', (string) $field->id],
+			['Name', $field->name],
+			['Label', $field->label ?: '-'],
+			['Type', $field->type->className()],
+			['Table', $tableName],
+			['Flags', $this->getFlagSummary($field->flags)],
+		];
 
-        $slicedSettings = array_slice($settingsData, 0, 15);
-        if ($slicedSettings) {
-            table(['Setting', 'Value'], $slicedSettings);
-        }
+		table(
+			headers: ['Property', 'Value'],
+			rows: $general
+		);
 
-        if (count($settingsData) > 15) {
-            info("... and " . (count($settingsData) - 15) . " more.");
-        }
+		info('Template Usage (' . count($templates) . ')');
+		if ($templates) {
+			info(implode(', ', $templates));
+		} else {
+			warning('Not used in any templates');
+		}
 
-        return Command::SUCCESS;
-    }
+		if ($columns) {
+			info('Data Structure');
+			$columnsData = array_map(static fn(array $col): array => [(string) $col['column'], (string) $col['type']], $columns);
+			table(
+				headers: ['Column', 'DataType'],
+				rows: $columnsData
+			);
+		}
 
-    private function getFlagSummary(int $flags): string
-    {
-        $summary = [];
-        if ($flags & Field::flagSystem) $summary[] = 'System';
-        if ($flags & Field::flagPermanent) $summary[] = 'Permanent';
-        if ($flags & Field::flagGlobal) $summary[] = 'Global';
-        if ($flags & Field::flagAutojoin) $summary[] = 'Autojoin';
+		info('Settings (Non-Default)');
+		$settingsData = [];
+		foreach ($settings as $k => $v) {
+			if (strlen($v) > 100) {
+				$v = substr($v, 0, 97) . '...';
+			}
+			$settingsData[] = [$k, $v];
+		}
 
-        return $summary ? implode(' | ', $summary) : 'None';
-    }
+		$slicedSettings = array_slice($settingsData, 0, 15);
+		if ($slicedSettings) {
+			table(['Setting', 'Value'], $slicedSettings);
+		}
+
+		if (count($settingsData) > 15) {
+			info('... and ' . (count($settingsData) - 15) . ' more.');
+		}
+
+		return Command::SUCCESS;
+	}
+
+	private function getFlagSummary(int $flags): string
+	{
+		$summary = [];
+		if ($flags & Field::flagSystem) {
+			$summary[] = 'System';
+		}
+		if ($flags & Field::flagPermanent) {
+			$summary[] = 'Permanent';
+		}
+		if ($flags & Field::flagGlobal) {
+			$summary[] = 'Global';
+		}
+		if ($flags & Field::flagAutojoin) {
+			$summary[] = 'Autojoin';
+		}
+
+		return $summary ? implode(' | ', $summary) : 'None';
+	}
 }

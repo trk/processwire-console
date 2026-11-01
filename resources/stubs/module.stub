@@ -6,52 +6,59 @@ namespace ProcessWire;
 
 /**
  * {{className}} Module
- * 
+ *
  * {{summary}}
- * 
+ *
  * @author {{author}}
  */
-class {{className}} extends WireData implements Module {
+class {{className}} extends WireData implements Module
+{
+	/**
+	 * Get module information.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public static function getModuleInfo(): array
+	{
+		return [
+			'title' => '{{title}}',
+			'version' => '0.0.1',
+			'summary' => '{{summary}}',
+			'singular' => true,
+			'autoload' => true,
+			'icon' => 'cube',
+		];
+	}
 
-    /**
-     * Get module information
-     */
-    public static function getModuleInfo() {
-        return [
-            'title' => '{{title}}',
-            'version' => '0.0.1',
-            'summary' => '{{summary}}',
-            'singular' => true,
-            'autoload' => true,
-            'icon' => 'cube',
-        ];
-    }
+	/**
+	 * Initialized when ProcessWire starts.
+	 */
+	public function init(): void
+	{
+		// Your initialization code here
+	}
 
-    /**
-     * Initialized when ProcessWire starts
-     */
-    public function init() {
-        // Your initialization code here
-    }
+	/**
+	 * API variables are ready (pages, templates, etc.).
+	 */
+	public function ready(): void
+	{
+		// Your ready code here
+	}
 
-    /**
-     * API variables are ready (pages, templates, etc.)
-     */
-    public function ready() {
-        // Your ready code here
-    }
+	/**
+	 * Called when the module is installed.
+	 */
+	public function ___install(): void
+	{
+		// Create fields or templates needed by your module
+	}
 
-    /**
-     * Called when the module is installed
-     */
-    public function ___install() {
-        // Create fields or templates needed by your module
-    }
-
-    /**
-     * Called when the module is uninstalled
-     */
-    public function ___uninstall() {
-        // Clean up fields or templates created by your module
-    }
+	/**
+	 * Called when the module is uninstalled.
+	 */
+	public function ___uninstall(): void
+	{
+		// Clean up fields or templates created by your module
+	}
 }
