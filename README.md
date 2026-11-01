@@ -5,7 +5,7 @@
 
 <p align="center">
   A professional CLI for <a href="https://processwire.com">ProcessWire CMS/CMF</a>.<br>
-  57 production-ready commands · JSON output for AI agents · Composer-driven extensibility
+  74 production-ready commands · JSON output for AI agents · Composer-driven extensibility
 </p>
 
 <p align="center">
@@ -52,28 +52,28 @@
 
 ## Why ProcessWire Console?
 
-ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills that gap with **57 production-ready commands** purpose-built for ProcessWire's architecture:
+ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills that gap with **74 production-ready commands** purpose-built for ProcessWire's architecture:
 
 | Domain | Commands | Description |
 |--------|----------|-------------|
-| Content (Pages) | 8 commands | Create, update, publish, move, trash, restore |
-| Schema (Fields) | 7 commands | List, info, create, update, rename, attach, detach |
-| Schema (Templates) | 6 commands | List, info, create, update, rename, reorder fields |
+| Content (Pages) | 9 commands | List, find, create, update, publish, unpublish, move, trash, restore |
+| Schema (Fields) | 7 commands | List, info, update, rename, attach, detach, delete |
+| Schema (Templates) | 6 commands | List, info, update, rename, reorder fields, delete |
 | Modules | 5 commands | List, install, uninstall, refresh, upgrade |
 | Users & RBAC | 11 commands | Users, roles, permissions management |
 | Cache & Logs | 7 commands | Clear caches, list/read/tail/clear log files |
 | Database | 4 commands | Backup, restore, list backups, purge old backups |
-| Scaffolding | 5 commands | Generate modules, migrations, queues, seeders, schedules |
-| Migrations | 8 commands | Run, rollback, reset, refresh, fresh, status |
+| Scaffolding | 6 commands | Generate modules, migrations, queues, seeders, schedules, tests |
+| Migrations | 7 commands | Run, rollback, reset, refresh, fresh, status, install |
 | Queues | 5 commands | Work, failed, retry, clear, initialize tables |
 | Seeding | 1 command | Populate the database with test data |
 | Scheduling | 1 command | Run due scheduled tasks |
 | Maintenance | 2 commands | Put the application up or down |
-| Runtime | 2 commands | Interactive REPL, command listing |
-| Testing | 2 commands | Run tests, scaffold test files |
-| **Total** | **73 commands** | |
+| Runtime | 2 commands | Interactive REPL (`tinker`), version info (`version`) |
+| Testing | 1 command | Run Pest test suites (`test`) |
+| **Total** | **74 commands** | |
 
-Every command supports `--json` for machine-readable output, `--dry-run` for safe previews, and `--force` for non-interactive scripting.
+Every command supports `--json` for machine-readable output; mutation commands support `--dry-run` for safe previews, and destructive commands support `--force` for non-interactive scripting.
 
 ---
 
@@ -316,9 +316,7 @@ php vendor/bin/wire page:update --id=1042 --title="Preview" --dry-run
 ```bash
 php vendor/bin/wire page:publish --id=1042
 php vendor/bin/wire page:unpublish --id=1042
-
-# Skip confirmation
-php vendor/bin/wire page:publish --id=1042 --force
+php vendor/bin/wire page:publish --id=1042 --dry-run --json
 ```
 
 #### `page:trash` / `page:restore`
@@ -453,7 +451,7 @@ php vendor/bin/wire template:delete --name=unused-template --force
 
 ### Modules
 
-A complete module lifecycle manager — discover, install, enable, disable, upgrade.
+A complete module lifecycle manager — discover, install, uninstall, refresh, upgrade.
 
 #### `module:list`
 
@@ -859,33 +857,33 @@ declare(strict_types=1);
 namespace ProcessWire;
 
 return new class {
-    public function up(): void
-    {
-        $field = new Field();
-        $field->type = wire('modules')->get('FieldtypeText');
-        $field->name = 'subtitle';
-        $field->label = 'Subtitle';
-        wire('fields')->save($field);
-    }
+	public function up(): void
+	{
+		$field = new Field();
+		$field->type = wire('modules')->get('FieldtypeText');
+		$field->name = 'subtitle';
+		$field->label = 'Subtitle';
+		wire('fields')->save($field);
+	}
 
-    public function down(): void
-    {
-        $field = wire('fields')->get('subtitle');
-        if (!$field || !$field->id) {
-            return;
-        }
+	public function down(): void
+	{
+		$field = wire('fields')->get('subtitle');
+		if (!$field || !$field->id) {
+			return;
+		}
 
-        // Guard: field must not be attached to any template
-        $fieldgroups = $field->getFieldgroups();
-        if ($fieldgroups->count() > 0) {
-            $names = $fieldgroups->implode(', ', 'name');
-            throw new WireException(
-                "Cannot delete field 'subtitle' — attached to: {$names}. Detach first."
-            );
-        }
+		// Guard: field must not be attached to any template
+		$fieldgroups = $field->getFieldgroups();
+		if ($fieldgroups->count() > 0) {
+			$names = $fieldgroups->implode(', ', 'name');
+			throw new WireException(
+				"Cannot delete field 'subtitle' — attached to: {$names}. Detach first."
+			);
+		}
 
-        wire('fields')->delete($field);
-    }
+		wire('fields')->delete($field);
+	}
 };
 ```
 
@@ -1156,7 +1154,7 @@ php vendor/bin/wire schedule:run
 
 Easily put your application into a maintenance or disabled state.
 
-**Requirement:** For ProcessWire to respond to this state, update `site/init.php` to check for `site/assets/down.json`. (See the Boost `pw-maintenance` skill for a code snippet).
+**Requirement:** For ProcessWire to respond to this state, update `site/init.php` to check for `site/down.json`. (See the Boost `pw-maintenance` skill for a code snippet).
 
 #### `down`
 
@@ -1290,20 +1288,20 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 class SyncProductsCommand extends Command
 {
-    protected function configure(): void
-    {
-        $this
-            ->setName('products:sync')
-            ->setDescription('Synchronize products from external API.');
-    }
+	protected function configure(): void
+	{
+		$this
+			->setName('products:sync')
+			->setDescription('Synchronize products from external API.');
+	}
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
-    {
-        $io = new SymfonyStyle($input, $output);
-        // Your logic here — $pages, $modules etc. are available via wire()
-        $io->success('Products synchronized.');
-        return Command::SUCCESS;
-    }
+	protected function execute(InputInterface $input, OutputInterface $output): int
+	{
+		$io = new SymfonyStyle($input, $output);
+		// Your logic here — $pages, $modules etc. are available via wire()
+		$io->success('Products synchronized.');
+		return Command::SUCCESS;
+	}
 }
 ```
 
@@ -1358,7 +1356,7 @@ Migration stubs enforce **safe-by-default guards** in `down()` — they never ca
 
 ### Dry-Run Mode
 
-Preview any mutation with `--dry-run`:
+Preview supported mutations with `--dry-run`:
 
 ```bash
 php vendor/bin/wire page:update --id=1042 --title="Test" --dry-run
@@ -1375,31 +1373,42 @@ processwire-console/
 ├── bin/
 │   └── wire                    # CLI entry point (bootstrap + command registration)
 ├── src/
-│   ├── Commands/               # 57 command classes
-│   │   ├── Page*.php           # 8 page management commands
+│   ├── Commands/               # 74 command classes
+│   │   ├── Page*.php           # 9 page management commands
 │   │   ├── Field*.php          # 7 field management commands
 │   │   ├── Template*.php       # 6 template management commands
-│   │   ├── Module*.php         # 7 module lifecycle commands
+│   │   ├── Module*.php         # 5 module lifecycle commands
 │   │   ├── User*.php           # 4 user commands
 │   │   ├── Role*.php           # 4 role commands
 │   │   ├── Permission*.php     # 3 permission commands
-│   │   ├── Migrate*.php        # 8 migration commands
+│   │   ├── Migrate*.php        # 7 migration commands
+│   │   ├── Queue*.php          # 5 queue commands
 │   │   ├── Cache*.php          # 2 cache commands
-│   │   ├── Logs*.php           # 3 log commands
-│   │   ├── Db*.php             # 2 database commands
+│   │   ├── Log*.php            # 5 log commands
+│   │   ├── Db*.php             # 3 database & seed commands
 │   │   ├── Backup*.php         # 2 backup commands
-│   │   ├── Make*.php           # 4 scaffolding commands (incl. make:migration)
+│   │   ├── Make*.php           # 6 scaffolding commands
+│   │   ├── ScheduleRunCommand.php
+│   │   ├── DownCommand.php / UpCommand.php
+│   │   ├── TestCommand.php
+│   │   ├── VersionCommand.php
 │   │   └── TinkerCommand.php   # Interactive REPL
-│   └── Migration/              # Migration engine
-│       ├── MigrationRepository.php  # Database tracking (wire_migrations table)
-│       └── Migrator.php             # Core engine (discovery, up/down, batches)
+│   ├── Database/               # Base Seeder contract
+│   ├── Migration/              # Migration engine (Migrator)
+│   ├── Queue/                  # Queue engine (QueueManager, Queue)
+│   ├── Scheduling/             # Task scheduler (Event, Task)
+│   ├── Support/                # FeatureDiscoverer (paths, files, namespaces, classes, composer)
+│   └── Traits/                 # InteractWithProcessWire
 ├── resources/
 │   └── stubs/                  # Scaffolding templates
 │       ├── module.stub
 │       ├── fieldtype.stub
 │       ├── inputfield.stub
 │       ├── process.stub
-│       ├── template.stub
+│       ├── pest.stub
+│       ├── queue.stub
+│       ├── seeder.stub
+│       ├── task.stub
 │       ├── migration.stub                 # Blank migration
 │       ├── migration.create-field.stub    # Field creation
 │       ├── migration.create-template.stub # Template + fieldgroup
@@ -1415,7 +1424,7 @@ processwire-console/
 1. Locate Composer autoloader (supports standard and symlinked setups)
 2. Walk upward to find `wire/core/ProcessWire.php`
 3. Boot ProcessWire with database config (graceful fallback if unavailable)
-4. Register 57 built-in commands (including 8 migration commands)
+4. Register 74 built-in commands
 5. Auto-discover custom commands dynamically from:
    - Site profile: `site/commands/`
    - Installed modules: `site/modules/*/commands/`
@@ -1426,7 +1435,7 @@ processwire-console/
 
 - **Null-safe:** All ProcessWire API `->get()` calls are guarded against `null` returns
 - **Strict typing:** `declare(strict_types=1)` in every file
-- **Consistent I/O:** All commands use `SymfonyStyle` for formatted output
+- **Consistent I/O:** All commands use Laravel Prompts and standard JSON envelopes (`{"ok":true|false,...}`)
 - **Dual output:** Human-readable tables + machine-readable JSON on every command
 - **Non-destructive defaults:** Confirmations on mutations, `--dry-run` for previews
 

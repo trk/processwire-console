@@ -4,6 +4,8 @@
 declare(strict_types=1);
 
 use Symfony\Component\Console\Application;
+use Symfony\Component\Console\Command\Command;
+use Totoglu\Console\Support\FeatureDiscoverer;
 
 use Totoglu\Console\Commands\MakeModuleCommand;
 use Totoglu\Console\Commands\UserCreateCommand;
@@ -89,33 +91,44 @@ $autoloader = null;
 
 // Usually Composer sets this global variable when calling via vendor/bin
 if (isset($GLOBALS['_composer_autoload_path']) && file_exists($GLOBALS['_composer_autoload_path'])) {
-    $autoloader = $GLOBALS['_composer_autoload_path'];
+	$autoloader = $GLOBALS['_composer_autoload_path'];
 } else {
-    // Fallbacks
-    $candidates = [
-        __DIR__ . '/../vendor/autoload.php',          // Local dev inside the package
-        __DIR__ . '/../../../vendor/autoload.php',    // If package is nested inside /src folder and root has vendor/
-        __DIR__ . '/../../../autoload.php',           // Typical vendor/trk/package/bin/
-        __DIR__ . '/../../vendor/autoload.php',       // Typical root dev
-        __DIR__ . '/../../../../vendor/autoload.php', // If symlinked and 3 dirs deep
-    ];
+	// Fallbacks
+	$candidates = [
+		__DIR__ . '/../vendor/autoload.php',          // Local dev inside the package
+		__DIR__ . '/../../../vendor/autoload.php',    // If package is nested inside /src folder and root has vendor/
+		__DIR__ . '/../../../autoload.php',           // Typical vendor/trk/package/bin/
+		__DIR__ . '/../../vendor/autoload.php',       // Typical root dev
+		__DIR__ . '/../../../../vendor/autoload.php', // If symlinked and 3 dirs deep
+	];
 
-    foreach ($candidates as $candidate) {
-        if (file_exists($candidate)) {
-            $autoloader = $candidate;
-            break;
-        }
-    }
+	foreach ($candidates as $candidate) {
+		if (file_exists($candidate)) {
+			$autoloader = $candidate;
+			break;
+		}
+	}
 }
 
 if (!$autoloader || !file_exists($autoloader)) {
-    echo "Error: Could not locate composer autoloader.\n";
-    exit(1);
+	echo "Error: Could not locate composer autoloader.\n";
+	exit(1);
 }
 
 $autoloader = realpath($autoloader);
 
 $loader = require $autoloader;
+
+spl_autoload_register(static function (string $class): void {
+	$prefix = 'Totoglu\\Console\\';
+	if (str_starts_with($class, $prefix)) {
+		$relative = substr($class, strlen($prefix));
+		$file = __DIR__ . '/../src/' . str_replace('\\', '/', $relative) . '.php';
+		if (is_file($file)) {
+			require_once $file;
+		}
+	}
+}, true, true);
 
 /**
  * Locate ProcessWire root and bootstrap core.
@@ -125,18 +138,20 @@ $tempRoot = dirname($autoloader, 2);
 
 // Go up until we find the 'wire' directory
 while ($tempRoot !== '/' && !empty($tempRoot)) {
-    if (file_exists($tempRoot . '/wire/core/ProcessWire.php')) {
-        $pwRoot = realpath($tempRoot);
-        break;
-    }
-    $parent = dirname($tempRoot);
-    if ($parent === $tempRoot) break;
-    $tempRoot = $parent;
+	if (file_exists($tempRoot . '/wire/core/ProcessWire.php')) {
+		$pwRoot = realpath($tempRoot);
+		break;
+	}
+	$parent = dirname($tempRoot);
+	if ($parent === $tempRoot) {
+		break;
+	}
+	$tempRoot = $parent;
 }
 
 if (!$pwRoot) {
-    echo "Error: Could not locate ProcessWire core (wire/core/ProcessWire.php) in any parent directory of {$autoloader}.\n";
-    exit(1);
+	echo "Error: Could not locate ProcessWire core (wire/core/ProcessWire.php) in any parent directory of {$autoloader}.\n";
+	exit(1);
 }
 
 // Additional PSR-4 autoloading for site/ subdirectories (seeders, schedule, queue).
@@ -145,25 +160,27 @@ if (!$pwRoot) {
 // Note: For web-accessible usage (templates/modules), the user should add the same
 // PSR-4 mapping to their root composer.json: "autoload": { "psr-4": { "Site\\": "site/" } }
 spl_autoload_register(function (string $class) use ($pwRoot): void {
-    $prefixes = [
-        'Site\\Seeders\\'  => 'seeders/',
-        'Site\\Schedule\\' => 'schedule/',
-        'Site\\Queue\\'    => 'queue/',
-    ];
-    foreach ($prefixes as $prefix => $subPath) {
-        if (strncmp($prefix, $class, strlen($prefix)) !== 0) continue;
-        $relative = substr($class, strlen($prefix));
-        $relativeFile = str_replace('\\', '/', $relative) . '.php';
-        $file = rtrim($pwRoot, '/') . '/site/' . $subPath . $relativeFile;
-        if (file_exists($file)) {
-            require_once $file;
-            return;
-        }
-    }
+	$prefixes = [
+		'Site\\Seeders\\'  => 'seeders/',
+		'Site\\Schedule\\' => 'schedule/',
+		'Site\\Queue\\'    => 'queue/',
+	];
+	foreach ($prefixes as $prefix => $subPath) {
+		if (strncmp($prefix, $class, strlen($prefix)) !== 0) {
+			continue;
+		}
+		$relative = substr($class, strlen($prefix));
+		$relativeFile = str_replace('\\', '/', $relative) . '.php';
+		$file = rtrim($pwRoot, '/') . '/site/' . $subPath . $relativeFile;
+		if (file_exists($file)) {
+			require_once $file;
+			return;
+		}
+	}
 });
 
 if (!class_exists('\ProcessWire\ProcessWire', false)) {
-    require_once($pwRoot . '/wire/core/ProcessWire.php');
+	require_once($pwRoot . '/wire/core/ProcessWire.php');
 }
 
 // Manual Clean Bootstrap
@@ -172,305 +189,183 @@ $wire = null;
 $wireBootstrapError = null;
 
 try {
-    $config = \ProcessWire\ProcessWire::buildConfig($pwRoot);
-    // Only attempt full bootstrap if database is configured
-    if ($config->dbName) {
-        $wire = new \ProcessWire\ProcessWire($config);
-    }
+	$config = \ProcessWire\ProcessWire::buildConfig($pwRoot);
+	// Only attempt full bootstrap if database is configured
+	if ($config->dbName) {
+		$wire = new \ProcessWire\ProcessWire($config);
+	}
 } catch (\Throwable $e) {
-    $wireBootstrapError = $e->getMessage();
-    // Database or config issue - continue to show basic CLI helps
-    if (in_array('-vvv', $_SERVER['argv'] ?? []) || in_array('--verbose', $_SERVER['argv'] ?? [])) {
-        error_log('[wire-cli] ProcessWire bootstrap failed: ' . $e->getMessage());
-    }
+	$wireBootstrapError = $e->getMessage();
+	// Database or config issue - continue to show basic CLI helps
+	if (in_array('-vvv', $_SERVER['argv'] ?? [], true) || in_array('--verbose', $_SERVER['argv'] ?? [], true)) {
+		error_log('[wire-cli] ProcessWire bootstrap failed: ' . $e->getMessage());
+	}
 }
 
 // Global safety: If ProcessWire was NOT fully bootstrapped (no DB, config issue),
-// convert fatal "Call to a member function on null" errors from wire() calls
-// into a user-friendly CLI error instead of a PHP Fatal Error.
+// convert uncaught \Error exceptions from unbootstrapped ProcessWire access into a clean CLI message.
 if (!($wire instanceof \ProcessWire\ProcessWire)) {
-    set_error_handler(function (int $errno, string $errstr, string $errfile, int $errline): bool {
-        if ($errno === E_ERROR || $errno === E_RECOVERABLE_ERROR) {
-            return false; // Let PHP handle real fatal errors
-        }
-        // Detect "Call to a member function X on null" pattern originating from wire() usage
-        if (stripos($errstr, 'on null') !== false || stripos($errstr, 'to a member function') !== false) {
-            $reason = $GLOBALS['wireBootstrapError'] ?? 'ProcessWire is not fully bootstrapped (database/config may be missing).';
-            fwrite(STDERR, "ERROR: Cannot run this command — ProcessWire environment is unavailable.\n");
-            fwrite(STDERR, "Reason: {$reason}\n");
-            fwrite(STDERR, "Hint: Run 'wire list' or 'wire --help' to see available commands.\n");
-            exit(1);
-        }
-        return false;
-    });
-
-    // Also catch uncaught exceptions from execute() for the same class of issues
-    set_exception_handler(function (\Throwable $e): void {
-        $msg = $e->getMessage();
-        if (stripos($msg, 'null') !== false || stripos($msg, 'not found') !== false || $e instanceof \Error) {
-            $reason = $GLOBALS['wireBootstrapError'] ?? 'ProcessWire is not fully bootstrapped (database/config may be missing).';
-            fwrite(STDERR, "ERROR: Cannot run this command — ProcessWire environment is unavailable.\n");
-            fwrite(STDERR, "Reason: {$reason}\n");
-            fwrite(STDERR, "Hint: Run 'wire list' or 'wire --help' to see available commands.\n");
-            exit(1);
-        }
-        // Other exceptions -> normal Symfony handler will catch if we restore
-        restore_exception_handler();
-        throw $e;
-    });
+	set_exception_handler(function (\Throwable $e) use ($wireBootstrapError): void {
+		if ($e instanceof \Error) {
+			$reason = $wireBootstrapError ?? 'ProcessWire is not fully bootstrapped (database/config may be missing).';
+			fwrite(STDERR, "ERROR: Cannot run this command — ProcessWire environment is unavailable.\n");
+			fwrite(STDERR, "Reason: {$reason}\n");
+			fwrite(STDERR, "Hint: Run 'wire list' or 'wire --help' to see available commands.\n");
+			exit(1);
+		}
+		restore_exception_handler();
+		throw $e;
+	});
 }
 
-$consoleVersion = '0.1.2';
+$consoleVersion = '0.2.0';
 if (class_exists('\Composer\InstalledVersions')) {
-    try {
-        $consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.1.2';
-    } catch (\Throwable $e) {
-        error_log('[wire-cli] Could not resolve console version: ' . $e->getMessage());
-    }
+	try {
+		$consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.2.0';
+	} catch (\Throwable $e) {
+		error_log('[wire-cli] Could not resolve console version: ' . $e->getMessage());
+	}
 }
 
 $pwVersion = 'Unknown';
 if (class_exists('\ProcessWire\ProcessWire', false)) {
-    $pwVersion = \ProcessWire\ProcessWire::versionMajor . '.' . \ProcessWire\ProcessWire::versionMinor . '.' . \ProcessWire\ProcessWire::versionRevision;
-    if (\ProcessWire\ProcessWire::versionSuffix) {
-        $pwVersion .= '-' . \ProcessWire\ProcessWire::versionSuffix;
-    }
-}
-
-$argv = $_SERVER['argv'] ?? [];
-if (in_array('--version', $argv) || in_array('-V', $argv)) {
-    // Check if there is a 'boost' context
-    if (isset($argv[1]) && str_starts_with($argv[1], 'boost')) {
-        $boostVersion = 'Unknown';
-        if (class_exists('\Composer\InstalledVersions')) {
-            try {
-                $boostVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-boost') ?? 'Unknown';
-            } catch (\Throwable $e) {
-                error_log('[wire-cli] Could not resolve boost version: ' . $e->getMessage());
-            }
-        }
-        echo "ProcessWire Boost $boostVersion\n";
-        exit(0);
-    }
+	$pwVersion = \ProcessWire\ProcessWire::versionMajor . '.' . \ProcessWire\ProcessWire::versionMinor . '.' . \ProcessWire\ProcessWire::versionRevision;
+	if (\ProcessWire\ProcessWire::versionSuffix) {
+		$pwVersion .= '-' . \ProcessWire\ProcessWire::versionSuffix;
+	}
 }
 
 $applicationVersion = $consoleVersion . ' (ProcessWire ' . $pwVersion . ')';
 $application = new Application('ProcessWire Command Line Interface', $applicationVersion);
+
 // Core Commands
 $application->addCommands([
 
-    new MakeModuleCommand(),
-    new UserCreateCommand(),
-    new UserListCommand(),
-    new UserUpdateCommand(),
-    new UserDeleteCommand(),
-    new RoleListCommand(),
-    new RoleCreateCommand(),
-    new RoleGrantCommand(),
-    new RoleRevokeCommand(),
-    new PermissionListCommand(),
-    new PermissionCreateCommand(),
-    new PermissionDeleteCommand(),
-    new PageListCommand(),
-    new PageFindCommand(),
-    new PageCreateCommand(),
-    new PagePublishCommand(),
-    new PageUnpublishCommand(),
-    new PageTrashCommand(),
-    new PageMoveCommand(),
-    new PageRestoreCommand(),
-    new PageUpdateCommand(),
-    new FieldListCommand(),
-    new FieldDeleteCommand(),
-    new FieldInfoCommand(),
-    new FieldUpdateCommand(),
-    new FieldRenameCommand(),
-    new FieldAttachCommand(),
-    new FieldDetachCommand(),
-    new TemplateListCommand(),
-    new TemplateDeleteCommand(),
-    new TemplateInfoCommand(),
-    new TemplateFieldsReorderCommand(),
-    new TemplateUpdateCommand(),
-    new TemplateRenameCommand(),
-    new ModuleListCommand(),
-    new ModuleInstallCommand(),
-    new ModuleUninstallCommand(),
-    new ModuleRefreshCommand(),
+	new MakeModuleCommand(),
+	new UserCreateCommand(),
+	new UserListCommand(),
+	new UserUpdateCommand(),
+	new UserDeleteCommand(),
+	new RoleListCommand(),
+	new RoleCreateCommand(),
+	new RoleGrantCommand(),
+	new RoleRevokeCommand(),
+	new PermissionListCommand(),
+	new PermissionCreateCommand(),
+	new PermissionDeleteCommand(),
+	new PageListCommand(),
+	new PageFindCommand(),
+	new PageCreateCommand(),
+	new PagePublishCommand(),
+	new PageUnpublishCommand(),
+	new PageTrashCommand(),
+	new PageMoveCommand(),
+	new PageRestoreCommand(),
+	new PageUpdateCommand(),
+	new FieldListCommand(),
+	new FieldDeleteCommand(),
+	new FieldInfoCommand(),
+	new FieldUpdateCommand(),
+	new FieldRenameCommand(),
+	new FieldAttachCommand(),
+	new FieldDetachCommand(),
+	new TemplateListCommand(),
+	new TemplateDeleteCommand(),
+	new TemplateInfoCommand(),
+	new TemplateFieldsReorderCommand(),
+	new TemplateUpdateCommand(),
+	new TemplateRenameCommand(),
+	new ModuleListCommand(),
+	new ModuleInstallCommand(),
+	new ModuleUninstallCommand(),
+	new ModuleRefreshCommand(),
 
-    new ModuleUpgradeCommand(),
-    new TinkerCommand(),
-    new DbBackupCommand(),
-    new DbRestoreCommand(),
-    new BackupListCommand(),
-    new BackupPurgeCommand(),
-    new LogListCommand(),
-    new LogReadCommand(),
-    new LogTailCommand(),
-    new LogClearCommand(),
-    new LogClearAllCommand(),
-    new CacheWireClearCommand(),
-    new CacheClearCommand(),
-    new VersionCommand(),
-    new MakeSeederCommand(),
-    new DbSeedCommand(),
-    new MakeTestCommand(),
-    new TestCommand(),
+	new ModuleUpgradeCommand(),
+	new TinkerCommand(),
+	new DbBackupCommand(),
+	new DbRestoreCommand(),
+	new BackupListCommand(),
+	new BackupPurgeCommand(),
+	new LogListCommand(),
+	new LogReadCommand(),
+	new LogTailCommand(),
+	new LogClearCommand(),
+	new LogClearAllCommand(),
+	new CacheWireClearCommand(),
+	new CacheClearCommand(),
+	new VersionCommand(),
+	new MakeSeederCommand(),
+	new DbSeedCommand(),
+	new MakeTestCommand(),
+	new TestCommand(),
 
-    // Scheduling Commands
-    new MakeTaskCommand(),
-    new ScheduleRunCommand(),
+	// Scheduling Commands
+	new MakeTaskCommand(),
+	new ScheduleRunCommand(),
 
-    // Maintenance Commands
-    new DownCommand(),
-    new UpCommand(),
+	// Maintenance Commands
+	new DownCommand(),
+	new UpCommand(),
 
-    // Migration Commands
-    new MakeMigrationCommand(),
-    new MakeQueueCommand(),
-    new MigrateCommand(),
-    new MigrateRollbackCommand(),
-    new MigrateResetCommand(),
-    new MigrateRefreshCommand(),
-    new MigrateFreshCommand(),
-    new MigrateStatusCommand(),
-    new MigrateInstallCommand(),
-    // Queue Commands
-    new QueueTableCommand(),
-    new QueueWorkCommand(),
-    new QueueFailedCommand(),
-    new QueueRetryCommand(),
-    new QueueClearCommand(),
+	// Migration Commands
+	new MakeMigrationCommand(),
+	new MakeQueueCommand(),
+	new MigrateCommand(),
+	new MigrateRollbackCommand(),
+	new MigrateResetCommand(),
+	new MigrateRefreshCommand(),
+	new MigrateFreshCommand(),
+	new MigrateStatusCommand(),
+	new MigrateInstallCommand(),
+	// Queue Commands
+	new QueueTableCommand(),
+	new QueueWorkCommand(),
+	new QueueFailedCommand(),
+	new QueueRetryCommand(),
+	new QueueClearCommand(),
 ]);
 
 /**
  * Dynamic Command Loading from Site Profile and Modules
- * This scans site/commands/ and site/modules/[module]/commands/ directories.
- * It uses a simple namespace parser so the commands can have custom namespaces.
+ * Scans site/commands/ and site/modules/[module]/commands/ directories via FeatureDiscoverer.
  */
 if ($wire instanceof \ProcessWire\ProcessWire) {
-    try {
-        $discoverer = new \Totoglu\Console\Support\FeatureDiscoverer($wire);
-        $commandPaths = $discoverer->getFeaturePaths('commands');
+	try {
+		$discoverer = new FeatureDiscoverer($wire);
+		$commandClasses = $discoverer->discoverClasses('commands', '*Command.php', Command::class);
 
-        foreach ($commandPaths as $siteCommandsPath) {
-            if (is_dir($siteCommandsPath)) {
-                $files = glob($siteCommandsPath . '*Command.php');
-                if ($files) {
-                    foreach ($files as $file) {
-                        require_once $file;
-
-                        // Parse the namespace if it exists (supports both semicolon and bracketed namespaces)
-                        $namespace = '';
-                        $content = file_get_contents($file);
-                        if (preg_match('/namespace\s+([^{;]+)[;{]/', $content, $matches)) {
-                            $namespace = trim($matches[1]) . chr(92);
-                        }
-
-                        $className = $namespace . basename($file, '.php');
-
-                        if (class_exists($className)) {
-                            $cmd = new $className();
-                            if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                                if (method_exists($application, 'add')) {
-                                    $application->add($cmd);
-                                } elseif (method_exists($application, 'addCommand')) {
-                                    $application->addCommand($cmd);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    } catch (\Throwable $e) {
-        $verbose = in_array('-v', $_SERVER['argv'] ?? []) || in_array('-vv', $_SERVER['argv'] ?? []) || in_array('-vvv', $_SERVER['argv'] ?? []) || in_array('--verbose', $_SERVER['argv'] ?? []);
-        fwrite(STDERR, "Error during dynamic command discovery: " . $e->getMessage() . "\n");
-        if ($verbose) {
-            fwrite(STDERR, "Stack trace:\n" . $e->getTraceAsString() . "\n");
-        }
-    }
+		foreach ($commandClasses as $className) {
+			$cmd = new $className();
+			if ($cmd instanceof Command) {
+				$application->addCommands([$cmd]);
+			}
+		}
+	} catch (\Throwable $e) {
+		$argv = $_SERVER['argv'] ?? [];
+		$verbose = in_array('-v', $argv, true) || in_array('-vv', $argv, true) || in_array('-vvv', $argv, true) || in_array('--verbose', $argv, true);
+		fwrite(STDERR, "Error during dynamic command discovery: " . $e->getMessage() . "\n");
+		if ($verbose) {
+			fwrite(STDERR, "Stack trace:\n" . $e->getTraceAsString() . "\n");
+		}
+	}
 }
 
 /**
  * External Package Commands (Composer-driven auto-discovery)
- * Reads vendor/composer/installed.json for global vendor packages
- * that declare: "extra": { "processwire-console": { "commands": ["FQCN", ...] } }
  */
 try {
-    // Globally installed Vendor Package auto-discovery
-    $vendorRoot = dirname($autoloader, 2); // e.g., project root
-    $installedJson = $vendorRoot . '/vendor/composer/installed.json';
-    if (is_file($installedJson)) {
-        $jsonStr = file_get_contents($installedJson);
-        if (is_string($jsonStr)) {
-            $json = json_decode($jsonStr, true);
-            if (is_array($json)) {
-                $packages = $json;
-                if (array_key_exists('packages', $json)) {
-                    $packages = $json['packages'];
-                }
-                if (is_array($packages)) {
-                    foreach ($packages as $pkg) {
-                        if (is_array($pkg) && isset($pkg['extra']['processwire-console']['commands']) && is_array($pkg['extra']['processwire-console']['commands'])) {
-                            foreach ($pkg['extra']['processwire-console']['commands'] as $fqcn) {
-                                if (is_string($fqcn) && class_exists($fqcn)) {
-                                    $cmd = new $fqcn();
-                                    if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                                        if (method_exists($application, 'add')) {
-                                            $application->add($cmd);
-                                        } elseif (method_exists($application, 'addCommand')) {
-                                            $application->addCommand($cmd);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // Support path repositories defined in root composer.json
-    $rootComposer = $vendorRoot . '/composer.json';
-    if (is_file($rootComposer)) {
-        $rootCfg = json_decode((string)file_get_contents($rootComposer), true);
-        $repos = $rootCfg['repositories'] ?? [];
-        foreach ($repos as $repo) {
-            if (($repo['type'] ?? '') !== 'path') continue;
-            $url = $repo['url'] ?? '';
-            if ($url === '') continue;
-            $relUrl = str_starts_with($url, './') ? substr($url, 2) : $url;
-            $basePath = str_starts_with($url, '/') ? $url : $vendorRoot . '/' . $relUrl;
-            $composerFiles = str_contains($basePath, '*')
-                ? glob(rtrim($basePath, '/') . '/composer.json') ?: []
-                : [$basePath . '/composer.json'];
-
-            foreach ($composerFiles as $pkgComposer) {
-                if (!is_file($pkgComposer)) continue;
-                $pkgCfg = json_decode((string)file_get_contents($pkgComposer), true);
-                $extra = $pkgCfg['extra']['processwire-console']['commands'] ?? null;
-                if (is_array($extra)) {
-                    foreach ($extra as $fqcn) {
-                        if (is_string($fqcn) && class_exists($fqcn)) {
-                            $cmd = new $fqcn();
-                            if ($cmd instanceof \Symfony\Component\Console\Command\Command) {
-                                if (method_exists($application, 'add')) {
-                                    $application->add($cmd);
-                                } elseif (method_exists($application, 'addCommand')) {
-                                    $application->addCommand($cmd);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+	$vendorRoot = dirname($autoloader, 2);
+	$composerCommandClasses = FeatureDiscoverer::discoverComposerCommands($vendorRoot);
+	foreach ($composerCommandClasses as $fqcn) {
+		$cmd = new $fqcn();
+		if ($cmd instanceof Command) {
+			$application->addCommands([$cmd]);
+		}
+	}
 } catch (\Throwable $e) {
-    if (in_array('-vvv', $_SERVER['argv'] ?? []) || in_array('--verbose', $_SERVER['argv'] ?? [])) {
-        error_log('[wire-cli] External package command discovery failed: ' . $e->getMessage());
-    }
+	if (in_array('-vvv', $_SERVER['argv'] ?? [], true) || in_array('--verbose', $_SERVER['argv'] ?? [], true)) {
+		error_log('[wire-cli] External package command discovery failed: ' . $e->getMessage());
+	}
 }
 
 $application->run();
