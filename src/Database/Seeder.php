@@ -5,50 +5,60 @@ declare(strict_types=1);
 namespace Totoglu\Console\Database;
 
 use ProcessWire\ProcessWire;
+use Totoglu\Console\Support\FeatureDiscoverer;
 
 abstract class Seeder
 {
-    /**
-     * @var \ProcessWire\ProcessWire
-     */
-    protected ProcessWire $wire;
+	/**
+	 * Optional Faker instance if fakerphp/faker is installed.
+	 */
+	protected mixed $faker = null;
 
-    /**
-     * Optional Faker instance if fakerphp/faker is installed.
-     * @var mixed
-     */
-    protected $faker;
+	public function __construct(protected ProcessWire $wire)
+	{
+		if (class_exists('\\Faker\\Factory')) {
+			$this->faker = \Faker\Factory::create();
+		}
+	}
 
-    public function __construct(ProcessWire $wire)
-    {
-        $this->wire = $wire;
+	/**
+	 * Run the database seeders.
+	 */
+	abstract public function run(): void;
 
-        // Provide a default Faker instance.
-        // If the developer wants a specific locale, they can override this in run().
-        if (class_exists('\\Faker\\Factory')) {
-            $this->faker = \Faker\Factory::create();
-        }
-    }
+	/**
+	 * Helper to safely call another Seeder class.
+	 */
+	protected function call(string $class): void
+	{
+		$resolved = $this->resolveSeederClass($class);
+		if ($resolved === null) {
+			throw new \RuntimeException("Seeder class not found: {$class}");
+		}
 
-    /**
-     * Run the database seeders.
-     */
-    abstract public function run(): void;
+		/** @var Seeder $seeder */
+		$seeder = new $resolved($this->wire);
+		$seeder->run();
+	}
 
-    /**
-     * Helper to safely call another Seeder class
-     *
-     * @param string $class
-     * @return void
-     */
-    protected function call(string $class): void
-    {
-        if (class_exists($class)) {
-            /** @var Seeder $seeder */
-            $seeder = new $class($this->wire);
-            $seeder->run();
-        } else {
-            \Laravel\Prompts\error("Seeder class not found: {$class}");
-        }
-    }
+	/**
+	 * @return class-string<Seeder>|null
+	 */
+	private function resolveSeederClass(string $class): ?string
+	{
+		foreach ([$class, "Site\\Seeders\\{$class}", "ProcessWire\\{$class}"] as $candidate) {
+			if (class_exists($candidate) && is_subclass_of($candidate, self::class)) {
+				return $candidate;
+			}
+		}
+
+		$discoverer = new FeatureDiscoverer($this->wire);
+		$seeders = $discoverer->discoverClasses('seeders', '*.php', self::class);
+		if (isset($seeders[$class])) {
+			return $seeders[$class];
+		}
+
+		$shortName = basename(str_replace('\\', '/', $class));
+		return $seeders[$shortName] ?? null;
+	}
 }
