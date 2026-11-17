@@ -16,6 +16,7 @@ final class QueueWorkCommand extends Command
 	use InteractWithProcessWire;
 
 	private static bool $shouldQuit = false;
+	/** @var array<string, mixed>|null */
 	private static ?array $pendingJob = null;
 	private static ?QueueManager $pendingManager = null;
 
@@ -34,10 +35,16 @@ final class QueueWorkCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$queueName = (string) $input->getOption('queue');
-		$sleep = (int) $input->getOption('sleep');
-		$maxTries = (int) $input->getOption('tries');
-		$memoryLimit = (int) $input->getOption('memory') * 1024 * 1024;
+		self::$shouldQuit = false;
+		self::$pendingJob = null;
+
+		$queueName = trim((string) $input->getOption('queue'));
+		if ($queueName === '') {
+			$queueName = 'default';
+		}
+		$sleep = max(0, (int) $input->getOption('sleep'));
+		$maxTries = max(1, (int) $input->getOption('tries'));
+		$memoryLimit = max(16, (int) $input->getOption('memory')) * 1024 * 1024;
 		$once = (bool) $input->getOption('once');
 		$asJson = (bool) $input->getOption('json');
 
@@ -55,7 +62,7 @@ final class QueueWorkCommand extends Command
 		$processed = 0;
 		$failed = 0;
 
-		while (true) {
+		while (connection_aborted() === 0) {
 			if (self::$shouldQuit) {
 				$this->releasePendingJob($asJson);
 				if ($asJson) {
@@ -74,6 +81,9 @@ final class QueueWorkCommand extends Command
 				return Command::SUCCESS;
 			}
 
+			$job = null;
+			$className = 'UnknownJob';
+
 			try {
 				$job = $manager->pop($queueName);
 				self::$pendingJob = $job;
@@ -89,15 +99,15 @@ final class QueueWorkCommand extends Command
 					continue;
 				}
 
-				$payload = json_decode($job['payload'] ?? '', true);
+				$payload = json_decode((string) ($job['payload'] ?? ''), true);
 				if (!is_array($payload)) {
 					$payload = [];
 				}
-				$className = $payload['class'] ?? 'UnknownJob';
-				$data = $payload['data'] ?? [];
+				$className = isset($payload['class']) && is_string($payload['class']) ? $payload['class'] : 'UnknownJob';
+				$data = isset($payload['data']) && is_array($payload['data']) ? $payload['data'] : [];
 
-				if (!isset($payload['class'])) {
-					throw new \Exception('Invalid job payload: Missing class definition.');
+				if (!isset($payload['class']) || !is_string($payload['class']) || $payload['class'] === '') {
+					throw new \RuntimeException('Invalid job payload: Missing class definition.');
 				}
 
 				if (!$asJson) {
@@ -125,7 +135,7 @@ final class QueueWorkCommand extends Command
 					return Command::SUCCESS;
 				}
 			} catch (\Throwable $e) {
-				if (isset($job) && $job !== null) {
+				if ($job !== null) {
 					$currentAttempts = (int) $job['attempts'];
 
 					if ($currentAttempts >= $maxTries) {
@@ -142,14 +152,11 @@ final class QueueWorkCommand extends Command
 					}
 					self::$pendingJob = null;
 					if ($once) {
-						if ($asJson) {
-							return $this->outputJsonError($output, 'JOB_FAILED', $e->getMessage());
-						}
-						return Command::FAILURE;
+						return $this->failCommand($output, $asJson, 'JOB_FAILED', $e->getMessage());
 					}
 				} else {
-					if ($asJson && $once) {
-						return $this->outputJsonError($output, 'WORKER_ERROR', $e->getMessage());
+					if ($once) {
+						return $this->failCommand($output, $asJson, 'WORKER_ERROR', $e->getMessage());
 					}
 					if (!$asJson) {
 						\Laravel\Prompts\error('Worker Error: ' . $e->getMessage());
@@ -158,6 +165,9 @@ final class QueueWorkCommand extends Command
 				}
 			}
 		}
+
+		$this->releasePendingJob($asJson);
+		return Command::SUCCESS;
 	}
 
 	private function registerSignalHandlers(bool $asJson): void

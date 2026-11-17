@@ -9,9 +9,13 @@ return new class {
 	public function up(): void
 	{
 		$fields = wire('fields');
+		$fieldtype = wire('modules')->get('{{fieldtype}}');
+		if (!$fieldtype) {
+			throw new \RuntimeException("Fieldtype module '{{fieldtype}}' is not installed.");
+		}
 
 		$field = new Field();
-		$field->type = wire('modules')->get('{{fieldtype}}');
+		$field->type = $fieldtype;
 		$field->name = '{{name}}';
 		$field->label = '{{label}}';
 		$fields->save($field);

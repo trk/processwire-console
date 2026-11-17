@@ -11,7 +11,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Support\FeatureDiscoverer;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
+use function Laravel\Prompts\confirm;
 
 final class LogTailCommand extends Command
 {
@@ -30,20 +30,18 @@ final class LogTailCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$name = (string) $input->getArgument('name');
+		$rawName = trim((string) $input->getArgument('name'));
 		$follow = (bool) $input->getOption('follow');
 		$asJson = (bool) $input->getOption('json');
 
-		$isInteractive = $name === '';
-
-		if ($isInteractive && !$asJson) {
-			$name = $this->searchLog('Select a log file');
-			if ($name === '') {
+		if ($rawName === '' && $this->canPrompt($input, $asJson)) {
+			$rawName = $this->searchLog('Select a log file');
+			if ($rawName === '') {
 				return Command::SUCCESS;
 			}
 
-			if (!$follow && $input->isInteractive()) {
-				$follow = \Laravel\Prompts\confirm(
+			if (!$follow) {
+				$follow = confirm(
 					label: 'Do you want to follow the output?',
 					default: true,
 					yes: 'Yes, tail the file continuously',
@@ -52,18 +50,20 @@ final class LogTailCommand extends Command
 			}
 		}
 
-		if ($name === '') {
-			$msg = 'Provide log name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($rawName === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide log name.');
 		}
 
-		$file = (string) preg_replace('/\.txt$/i', '', basename($name));
-		$linesCount = max(1, (int) $input->getOption('lines'));
+		$file = $this->normalizeLogChannel($rawName);
+		if ($file === '') {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid log name '{$rawName}'.");
+		}
+
+		$linesCount = max(1, min(10000, (int) $input->getOption('lines')));
 
 		$path = \ProcessWire\wire('config')->paths->logs . $file . '.txt';
-		if (!is_file($path)) {
-			$msg = "Log file not found: {$path}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		if (!is_file($path) || is_link($path)) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Log file not found: {$path}");
 		}
 
 		$slice = FeatureDiscoverer::readLastLines($path, $linesCount);
@@ -85,12 +85,17 @@ final class LogTailCommand extends Command
 		}
 
 		$pos = (int) filesize($path);
-		while (true) {
+		while (connection_aborted() === 0) {
 			clearstatcache(true, $path);
+			if (!is_file($path) || is_link($path)) {
+				break;
+			}
 			$size = (int) filesize($path);
-			if ($size > $pos) {
+			if ($size < $pos) {
+				$pos = $size;
+			} elseif ($size > $pos) {
 				$fp = fopen($path, 'r');
-				if ($fp) {
+				if ($fp !== false) {
 					fseek($fp, $pos);
 					while (!feof($fp)) {
 						$chunk = fgets($fp);
@@ -104,5 +109,7 @@ final class LogTailCommand extends Command
 			}
 			usleep(500000);
 		}
+
+		return Command::SUCCESS;
 	}
 }

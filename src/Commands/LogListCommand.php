@@ -27,9 +27,9 @@ final class LogListCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$asJson = (bool) $input->getOption('json');
-		$logs = \ProcessWire\wire('log')->getFiles();
+		$logs = \ProcessWire\wire('log')->getLogs();
 
-		if (empty($logs)) {
+		if ($logs === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0]);
 			}
@@ -40,14 +40,15 @@ final class LogListCommand extends Command
 		$headers = ['Log Name', 'Size', 'Modified'];
 		$rows = [];
 		$items = [];
-		foreach ($logs as $name => $fileInfo) {
-			$sizeBytes = (int) $fileInfo->getSize();
-			$mtime = (int) $fileInfo->getMTime();
+		foreach ($logs as $name => $logInfo) {
+			$logName = (string) ($logInfo['name'] ?? $name);
+			$sizeBytes = (int) ($logInfo['size'] ?? 0);
+			$mtime = (int) ($logInfo['modified'] ?? 0);
 			$size = number_format($sizeBytes / 1024, 2) . ' kB';
 			$modified = date('Y-m-d H:i:s', $mtime);
-			$rows[] = [$name, $size, $modified];
+			$rows[] = [$logName, $size, $modified];
 			$items[] = [
-				'name' => $name,
+				'name' => $logName,
 				'size' => $sizeBytes,
 				'modified' => $mtime,
 			];

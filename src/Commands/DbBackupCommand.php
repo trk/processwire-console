@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 
 final class DbBackupCommand extends Command
@@ -29,8 +28,7 @@ final class DbBackupCommand extends Command
 		$asJson = (bool) $input->getOption('json');
 		$backup = \ProcessWire\wire('database')->backups();
 		if (!$backup) {
-			$msg = 'Database backup tool not available.';
-			return $asJson ? $this->outputJsonError($output, 'UNAVAILABLE', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'UNAVAILABLE', 'Database backup tool not available.');
 		}
 
 		if (!$asJson) {
@@ -47,7 +45,6 @@ final class DbBackupCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		$msg = 'Database backup failed.';
-		return $asJson ? $this->outputJsonError($output, 'BACKUP_FAILED', $msg) : (error($msg) ?? Command::FAILURE);
+		return $this->failCommand($output, $asJson, 'BACKUP_FAILED', 'Database backup failed.');
 	}
 }

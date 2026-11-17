@@ -28,15 +28,24 @@ final class MigrateCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$steps = $input->getOption('step') ? (int) $input->getOption('step') : 0;
+		$stepOpt = $input->getOption('step');
 		$dryRun = (bool) $input->getOption('dry-run');
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
 
+		$steps = 0;
+		if ($stepOpt !== null && $stepOpt !== '') {
+			$stepStr = trim((string) $stepOpt);
+			if (!ctype_digit($stepStr) || (int) $stepStr < 1) {
+				return $this->failCommand($output, $asJson, 'INVALID_STEP', 'Option --step must be a positive integer.');
+			}
+			$steps = (int) $stepStr;
+		}
+
 		$migrator = new Migrator();
 		$pending = $migrator->getPending();
 
-		if (empty($pending)) {
+		if ($pending === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, ['applied' => [], 'message' => 'Nothing to migrate.']);
 			}
@@ -60,7 +69,7 @@ final class MigrateCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		if (!$force && !$asJson) {
+		if ($this->canPrompt($input, $asJson, $force)) {
 			\Laravel\Prompts\note(count($pending) . ' pending migration(s):');
 			foreach ($pending as $file) {
 				\Laravel\Prompts\info("  → {$file}");

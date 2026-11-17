@@ -39,8 +39,10 @@ final class VersionCommand extends Command
 				. \ProcessWire\ProcessWire::versionMinor . '.'
 				. \ProcessWire\ProcessWire::versionRevision;
 
-			$suffix = \ProcessWire\ProcessWire::versionSuffix;
-			if ($suffix) {
+			$suffix = defined(\ProcessWire\ProcessWire::class . '::versionSuffix')
+				? trim((string) constant(\ProcessWire\ProcessWire::class . '::versionSuffix'))
+				: '';
+			if ($suffix !== '') {
 				$pwVersion .= '-' . $suffix;
 			}
 		}

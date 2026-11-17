@@ -26,12 +26,8 @@ final class UpCommand extends Command
 	{
 		$json = (bool) $input->getOption('json');
 		$wire = \ProcessWire\wire();
-		if (!$wire) {
-			if ($json) {
-				return $this->outputJsonError($output, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
-			}
-			\Laravel\Prompts\error('ProcessWire environment not found.');
-			return Command::FAILURE;
+		if (!($wire instanceof \ProcessWire\ProcessWire)) {
+			return $this->failCommand($output, $json, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
 		}
 
 		try {
@@ -45,7 +41,9 @@ final class UpCommand extends Command
 				return Command::SUCCESS;
 			}
 
-			@unlink($file);
+			if (!@unlink($file) && file_exists($file)) {
+				throw new \RuntimeException("Unable to delete {$file}.");
+			}
 
 			if ($json) {
 				return $this->outputJsonSuccess($output, ['message' => 'Application is now live.']);
@@ -53,13 +51,8 @@ final class UpCommand extends Command
 			\Laravel\Prompts\info('Application is now live.');
 
 			return Command::SUCCESS;
-
-		} catch (\Exception $e) {
-			if ($json) {
-				return $this->outputJsonError($output, 'MAINTENANCE_ERROR', 'Failed to bring application out of maintenance mode: ' . $e->getMessage());
-			}
-			\Laravel\Prompts\error('Failed to bring application out of maintenance mode: ' . $e->getMessage());
-			return Command::FAILURE;
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $json, 'MAINTENANCE_ERROR', 'Failed to bring application out of maintenance mode: ' . $e->getMessage());
 		}
 	}
 }

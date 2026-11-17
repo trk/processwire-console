@@ -30,8 +30,8 @@ final class MigrateRefreshCommand extends Command
 		$asJson = (bool) $input->getOption('json');
 
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run migrate:refresh non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run migrate:refresh non-interactively.');
 			}
 			if (!\Laravel\Prompts\confirm('This will rollback ALL migrations and re-run them. Continue?', default: false)) {
 				\Laravel\Prompts\note('Aborted.');

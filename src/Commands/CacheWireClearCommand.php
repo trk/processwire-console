@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 
 final class CacheWireClearCommand extends Command
@@ -28,21 +27,21 @@ final class CacheWireClearCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$key = $input->getOption('key') ? (string) $input->getOption('key') : '';
-		$pattern = $input->getOption('pattern') ? (string) $input->getOption('pattern') : '';
+		$rawKey = $input->getOption('key');
+		$rawPattern = $input->getOption('pattern');
+		$key = ($rawKey !== null && $rawKey !== '') ? (string) $rawKey : '';
+		$pattern = ($rawPattern !== null && $rawPattern !== '') ? (string) $rawPattern : '';
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$key && !$pattern) {
-			$msg = 'Provide --key or --pattern.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($key === '' && $pattern === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --key or --pattern.');
 		}
 
-		if ($key) {
-			\ProcessWire\wire('cache')->delete($key);
-			$deleted = 1;
+		if ($key !== '') {
+			$deleted = \ProcessWire\wire('cache')->delete($key) ? 1 : 0;
 		} else {
 			$db = \ProcessWire\wire('database');
-			$table = $db->quoteIdentifier('caches');
+			$table = '`' . $db->escapeTable('caches') . '`';
 			$stmt = $db->prepare("DELETE FROM {$table} WHERE name LIKE :p");
 			$stmt->bindValue(':p', $pattern);
 			$stmt->execute();

@@ -41,17 +41,12 @@ final class TinkerCommand extends Command
 			|| (string) ($_ENV['PW_CLI_DISABLE_TINKER'] ?? '') === '1';
 
 		if ($disabled) {
-			$msg = 'Tinker is disabled via PW_CLI_DISABLE_TINKER=1.';
-			if ($asJson) {
-				return $this->outputJsonError($output, 'TINKER_DISABLED', $msg);
-			}
-			error($msg);
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'TINKER_DISABLED', 'Tinker is disabled via PW_CLI_DISABLE_TINKER=1.');
 		}
 
 		$code = $input->getArgument('code');
 
-		if ($code) {
+		if ($code !== null && $code !== '') {
 			try {
 				$echoed = $this->runCode((string) $code, $asJson ? null : $output);
 				if ($asJson) {
@@ -59,22 +54,18 @@ final class TinkerCommand extends Command
 				}
 				return Command::SUCCESS;
 			} catch (\Throwable $e) {
-				if ($asJson) {
-					return $this->outputJsonError($output, 'TINKER_ERROR', $e->getMessage());
-				}
-				error($e->getMessage());
-				return Command::FAILURE;
+				return $this->failCommand($output, $asJson, 'TINKER_ERROR', $e->getMessage());
 			}
 		}
 
-		if ($asJson) {
-			return $this->outputJsonError($output, 'MISSING_CODE', 'Provide inline PHP code argument when using --json.');
+		if ($asJson || !$input->isInteractive()) {
+			return $this->failCommand($output, $asJson, 'MISSING_CODE', 'Provide inline PHP code argument when running non-interactively.');
 		}
 
 		info('ProcessWire Tinker');
 		note('Type PHP code and press enter. Type "exit" to quit.');
 		note('Variables persist between lines. Classes/functions also persist (global scope).');
-		note('Use: $pages, $templates, $fields, $users, $roles, $config or wire("pages") etc.');
+		note('Use: $pages, $user, $templates, $fields, $users, $roles, $config or wire("pages") etc.');
 
 		while (true) {
 			$line = text('>>>');
@@ -83,7 +74,7 @@ final class TinkerCommand extends Command
 			}
 
 			try {
-				$this->runCode((string) $line, $output);
+				$this->runCode((string) $line, $output, true);
 			} catch (\Throwable $e) {
 				error($e->getMessage());
 			}
@@ -95,9 +86,32 @@ final class TinkerCommand extends Command
 	/**
 	 * Execute a single PHP code snippet with persisted variable state.
 	 */
-	private function runCode(string $code, ?OutputInterface $output): string
+	private function runCode(string $code, ?OutputInterface $output, bool $interactiveEchoReturn = false): string
 	{
-		foreach (['pages', 'templates', 'fields', 'users', 'roles', 'permissions', 'config', 'modules', 'database', 'sanitizer', 'session', 'input', 'log', 'cache', 'wire'] as $apiVar) {
+		$apiVariables = [
+			'pages',
+			'user',
+			'templates',
+			'fields',
+			'users',
+			'roles',
+			'permissions',
+			'config',
+			'modules',
+			'database',
+			'sanitizer',
+			'session',
+			'input',
+			'log',
+			'cache',
+			'files',
+			'datetime',
+			'languages',
+			'urls',
+			'wire',
+		];
+
+		foreach ($apiVariables as $apiVar) {
 			if (!isset(self::$state[$apiVar])) {
 				$apiVal = \ProcessWire\wire($apiVar);
 				if ($apiVal !== null) {
@@ -106,14 +120,26 @@ final class TinkerCommand extends Command
 			}
 		}
 
-		$isolatedEval = function (string $code): array {
+		$isolatedEval = static function (string $snippet) use ($interactiveEchoReturn): array {
 			extract(self::$state, EXTR_OVERWRITE | EXTR_REFS);
 
-			ob_start();
-			eval($code . ';');
-			$echoed = (string) ob_get_clean();
+			$trimmed = rtrim(trim($snippet), ';');
+			$canReturnExpr = $interactiveEchoReturn
+				&& $trimmed !== ''
+				&& !preg_match('/^(echo|print|return|if|for|foreach|while|do|switch|try|class|interface|trait|enum|function|namespace|use|unset|declare)\b/i', $trimmed)
+				&& !str_contains($trimmed, ';');
 
-			$reserved = ['code', 'echoed', 'reserved', 'allNow', 'userVars', 'k', 'v'];
+			$evalSource = $canReturnExpr ? "return ({$trimmed});" : "{$trimmed};";
+			$returnValue = null;
+
+			ob_start();
+			try {
+				$returnValue = eval($evalSource);
+			} finally {
+				$echoed = (string) ob_get_clean();
+			}
+
+			$reserved = ['snippet', 'interactiveEchoReturn', 'trimmed', 'canReturnExpr', 'evalSource', 'returnValue', 'echoed', 'reserved', 'allNow', 'userVars', 'k', 'v'];
 			$allNow = get_defined_vars();
 			$userVars = [];
 			foreach ($allNow as $k => $v) {
@@ -123,16 +149,26 @@ final class TinkerCommand extends Command
 				$userVars[$k] = $v;
 			}
 
-			return ['echoed' => $echoed, 'vars' => $userVars];
+			return ['echoed' => $echoed, 'returnValue' => $returnValue, 'hasReturn' => $canReturnExpr, 'vars' => $userVars];
 		};
 
 		$result = $isolatedEval($code);
 		self::$state = $result['vars'];
 
-		if ($output !== null && $result['echoed'] !== '') {
-			$output->write($result['echoed']);
+		$rendered = $result['echoed'];
+		if ($rendered === '' && $result['hasReturn'] && $result['returnValue'] !== null) {
+			if (is_scalar($result['returnValue'])) {
+				$rendered = var_export($result['returnValue'], true) . "\n";
+			} else {
+				$encoded = json_encode($result['returnValue'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+				$rendered = ($encoded !== false ? $encoded : get_debug_type($result['returnValue'])) . "\n";
+			}
 		}
 
-		return $result['echoed'];
+		if ($output !== null && $rendered !== '') {
+			$output->write($rendered);
+		}
+
+		return $rendered;
 	}
 }

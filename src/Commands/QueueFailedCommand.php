@@ -27,13 +27,13 @@ final class QueueFailedCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$asJson = (bool) $input->getOption('json');
-		$limit = max(1, (int) $input->getOption('limit'));
+		$limit = max(1, min(1000, (int) $input->getOption('limit')));
 
 		try {
 			$manager = new QueueManager();
 			$failedJobs = $manager->getFailedJobs($limit);
 
-			if (empty($failedJobs)) {
+			if ($failedJobs === []) {
 				if ($asJson) {
 					return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0]);
 				}
@@ -80,10 +80,9 @@ final class QueueFailedCommand extends Command
 				\Laravel\Prompts\info('The failed_jobs table does not exist. Run `wire queue:table` to create it.');
 				return Command::SUCCESS;
 			}
-			if ($asJson) {
-				return $this->outputJsonError($output, 'QUEUE_ERROR', $e->getMessage());
-			}
-			throw $e;
+			return $this->failCommand($output, $asJson, 'QUEUE_ERROR', $e->getMessage());
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'QUEUE_ERROR', $e->getMessage());
 		}
 	}
 }

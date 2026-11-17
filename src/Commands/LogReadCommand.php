@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\table;
 use function ProcessWire\wire;
@@ -37,23 +36,23 @@ final class LogReadCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$asJson = (bool) $input->getOption('json');
-		$name = (string) $input->getArgument('name');
+		$rawName = trim((string) $input->getArgument('name'));
 
-		if ($name === '' && !$asJson) {
-			$name = $this->searchLog('Select a log file');
-			if ($name === '') {
+		if ($rawName === '' && $this->canPrompt($input, $asJson)) {
+			$rawName = $this->searchLog('Select a log file');
+			if ($rawName === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if ($name === '') {
-			$msg = 'Provide log name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($rawName === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide log name.');
 		}
 
-		$sanitizer = wire('sanitizer');
-		$name = (string) preg_replace('/\.txt$/i', '', basename($name));
-		$name = $sanitizer->name($name);
+		$name = $this->normalizeLogChannel($rawName);
+		if ($name === '') {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid log name '{$rawName}'.");
+		}
 
 		$limitRaw = $input->getArgument('limit') ?? $input->getOption('limit');
 		$limit = (int) $limitRaw;
@@ -64,35 +63,46 @@ final class LogReadCommand extends Command
 			$limit = 5000;
 		}
 
-		$sort = strtolower((string) $input->getOption('sort'));
+		$sort = strtolower(trim((string) $input->getOption('sort')));
+		if (!in_array($sort, ['asc', 'desc'], true)) {
+			return $this->failCommand($output, $asJson, 'INVALID_SORT', "Invalid --sort value '{$sort}'. Expected 'asc' or 'desc'.");
+		}
+
 		$from = $input->getOption('from');
 		$to = $input->getOption('to');
 		$find = $input->getOption('find');
 
-		$options = ['limit' => $limit];
-		if ($from) {
-			$options['dateFrom'] = is_numeric($from) ? (int) $from : strtotime((string) $from);
+		$options = [
+			'limit' => $limit,
+			'reverse' => ($sort !== 'asc'),
+		];
+		if ($from !== null && $from !== '') {
+			$parsedFrom = is_numeric($from) ? (int) $from : strtotime((string) $from);
+			if ($parsedFrom === false) {
+				return $this->failCommand($output, $asJson, 'INVALID_DATE', "Invalid --from date/time: {$from}");
+			}
+			$options['dateFrom'] = $parsedFrom;
 		}
-		if ($to) {
-			$options['dateTo'] = is_numeric($to) ? (int) $to : strtotime((string) $to);
+		if ($to !== null && $to !== '') {
+			$parsedTo = is_numeric($to) ? (int) $to : strtotime((string) $to);
+			if ($parsedTo === false) {
+				return $this->failCommand($output, $asJson, 'INVALID_DATE', "Invalid --to date/time: {$to}");
+			}
+			$options['dateTo'] = $parsedTo;
 		}
-		if ($find) {
+		if ($find !== null && $find !== '') {
 			$options['text'] = (string) $find;
 		}
 
 		$log = wire('log');
 		$entries = array_values($log->getEntries($name, $options));
 
-		if (empty($entries)) {
+		if ($entries === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, ['name' => $name, 'items' => [], 'total' => 0]);
 			}
 			note("No entries found in log: {$name}");
 			return Command::SUCCESS;
-		}
-
-		if ($sort === 'desc') {
-			$entries = array_reverse($entries);
 		}
 
 		if ($asJson) {
@@ -106,9 +116,9 @@ final class LogReadCommand extends Command
 		$rows = [];
 		foreach ($entries as $entry) {
 			$rows[] = [
-				$entry['date'] ?? '-',
-				$entry['user'] ?? '-',
-				$entry['url'] ?? '-',
+				(string) ($entry['date'] ?? '-'),
+				(string) ($entry['user'] ?? '-'),
+				(string) ($entry['url'] ?? '-'),
 				wordwrap((string) ($entry['text'] ?? '-'), 80, "\n", true),
 			];
 		}

@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
@@ -18,6 +17,13 @@ use function Laravel\Prompts\text;
 final class MakeModuleCommand extends Command
 {
 	use InteractWithProcessWire;
+
+	private const STUB_TYPES = [
+		'module' => 'module.stub',
+		'fieldtype' => 'fieldtype.stub',
+		'inputfield' => 'inputfield.stub',
+		'process' => 'process.stub',
+	];
 
 	protected function configure(): void
 	{
@@ -39,7 +45,7 @@ final class MakeModuleCommand extends Command
 		$name = $input->getArgument('name') ? (string) $input->getArgument('name') : '';
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$name && $input->isInteractive() && !$asJson) {
+		if ($name === '' && $this->canPrompt($input, $asJson)) {
 			$name = text(
 				label: 'What is the name of the module? (e.g. HelloWorld)',
 				required: true
@@ -47,58 +53,70 @@ final class MakeModuleCommand extends Command
 		}
 
 		if (!$this->isValidIdentifier($name)) {
-			$msg = "Invalid module class name '{$name}'. Must match /^[A-Za-z][A-Za-z0-9_]*$/.";
-			return $asJson ? $this->outputJsonError($output, 'INVALID_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'INVALID_NAME',
+				"Invalid module class name '{$name}'. Must match /^[A-Za-z][A-Za-z0-9_]*$/."
+			);
 		}
 
-		$type = strtolower((string) $input->getOption('type'));
+		$type = strtolower(trim((string) $input->getOption('type')));
+		if (!isset(self::STUB_TYPES[$type])) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'INVALID_TYPE',
+				"Invalid module type '{$type}'. Valid types: " . implode(', ', array_keys(self::STUB_TYPES))
+			);
+		}
+
 		$title = $input->getOption('title') ? (string) $input->getOption('title') : $name;
 		$summary = $input->getOption('summary') ? (string) $input->getOption('summary') : "A new {$type} module created via wire-cli.";
 		$author = (string) $input->getOption('author');
 		$version = (string) $input->getOption('mod-version');
 		$autoloadFlag = (bool) $input->getOption('autoload');
 
-		$modulesPath = \ProcessWire\wire('config')->paths->siteModules;
+		$modulesPath = (string) \ProcessWire\wire('config')->paths->siteModules;
 		$modulePath = $modulesPath . $name;
 
 		if (is_dir($modulePath)) {
-			$msg = "Module directory '{$name}' already exists.";
-			return $asJson ? $this->outputJsonError($output, 'ALREADY_EXISTS', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "Module directory '{$name}' already exists.");
 		}
 
-		$stubFile = match ($type) {
-			'fieldtype' => 'fieldtype.stub',
-			'inputfield' => 'inputfield.stub',
-			'process' => 'process.stub',
-			default => 'module.stub',
-		};
-
-		$baseName = (string) preg_replace('/^Fieldtype/', '', $name);
+		$stubFile = self::STUB_TYPES[$type];
+		$baseName = (string) preg_replace('/^(Fieldtype|Inputfield|Process)/', '', $name);
 		if ($baseName === '') {
 			$baseName = $name;
 		}
 
+		$sanitizeInline = static fn(string $val): string => trim(str_replace(['*/', "\r", "\n"], ['* /', ' ', ' '], $val));
+		$escapeSingle = static fn(string $val): string => addcslashes($sanitizeInline($val), "\\'");
+
 		$content = $this->loadStub($stubFile, [
 			'{{className}}' => $name,
 			'{{baseName}}' => $baseName,
-			'{{title}}' => addslashes($title),
-			'{{summary}}' => addslashes($summary),
-			'{{author}}' => addslashes($author),
-			'{{name}}' => addslashes(strtolower($name)),
-			"'version' => '0.0.1'" => "'version' => '" . addslashes($version) . "'",
+			'{{title}}' => $escapeSingle($title),
+			'{{summary}}' => $escapeSingle($summary),
+			'{{author}}' => $escapeSingle($author),
+			'{{name}}' => $escapeSingle((string) preg_replace('/[^a-z0-9_-]/', '-', strtolower($name))),
+			"'version' => '0.0.1'" => "'version' => '" . $escapeSingle($version) . "'",
 		]);
 		if ($content === null) {
-			$msg = "Stub file not found: {$stubFile}";
-			return $asJson ? $this->outputJsonError($output, 'STUB_NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'STUB_NOT_FOUND', "Stub file not found: {$stubFile}");
 		}
 
 		if ($type === 'module' && !$autoloadFlag) {
 			$content = str_replace("'autoload' => true", "'autoload' => false", $content);
 		}
 
-		mkdir($modulePath, 0755, true);
+		if (!mkdir($modulePath, 0755, true) && !is_dir($modulePath)) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to create module directory: {$modulePath}");
+		}
 		$moduleFile = "{$modulePath}/{$name}.module.php";
-		file_put_contents($moduleFile, $content);
+		if (file_put_contents($moduleFile, $content) === false) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to write module file: {$moduleFile}");
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, [
@@ -109,7 +127,7 @@ final class MakeModuleCommand extends Command
 		}
 
 		info("{$type} '{$name}' scaffolded from stub at: {$moduleFile}");
-		note("You can now install it via the ProcessWire admin or 'wire module:list'.");
+		note("You can now install it via the ProcessWire admin or 'php vendor/bin/wire module:install --name={$name}'.");
 
 		return Command::SUCCESS;
 	}

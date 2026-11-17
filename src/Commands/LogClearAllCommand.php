@@ -33,9 +33,9 @@ final class LogClearAllCommand extends Command
 		$force = (bool) $input->getOption('force');
 
 		$log = \ProcessWire\wire('log');
-		$logs = $log->getFiles();
+		$logs = $log->getLogs();
 
-		if (empty($logs)) {
+		if ($logs === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, []);
 			}
@@ -44,8 +44,8 @@ final class LogClearAllCommand extends Command
 		}
 
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run log:clear-all non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run log:clear-all non-interactively.');
 			}
 			if (!confirm('Clear ' . count($logs) . ' log files?', false)) {
 				note('Aborted.');
@@ -55,12 +55,16 @@ final class LogClearAllCommand extends Command
 
 		$results = [];
 		$allOk = true;
+		$logsDir = \ProcessWire\wire('config')->paths->logs;
 
 		foreach ($logs as $name => $fileInfo) {
-			$file = basename((string) $name);
-			$path = \ProcessWire\wire('config')->paths->logs . $file . '.txt';
+			$file = $this->normalizeLogChannel((string) $name);
+			if ($file === '') {
+				continue;
+			}
+			$path = $logsDir . $file . '.txt';
 
-			if (!is_file($path)) {
+			if (!is_file($path) || is_link($path)) {
 				$results[$file] = false;
 				$allOk = false;
 				continue;

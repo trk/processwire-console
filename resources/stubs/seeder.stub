@@ -13,11 +13,11 @@ class {{class}} extends Seeder
 	public function run(): void
 	{
 		// Example 1: Use ProcessWire API
-		// $page = new \ProcessWire\Page();
-		// $page->template = 'basic-page';
-		// $page->parent = '/';
-		// $page->title = 'Sample Page';
-		// $page->save();
+		// $this->wire->pages->new([
+		// 	'template' => 'basic-page',
+		// 	'parent' => '/',
+		// 	'title' => 'Sample Page',
+		// ]);
 
 		// Example 2: From JSON file
 		// $data = json_decode(file_get_contents(__DIR__ . '/data.json'), true);

@@ -31,6 +31,7 @@ class {{className}} extends Process
 
 	public function ___execute(): string
 	{
-		return "<h2>Hello from {{title}}</h2>";
+		$title = $this->wire()->sanitizer->entities($this->_('{{title}}'));
+		return '<h2>Hello from ' . $title . '</h2>';
 	}
 }

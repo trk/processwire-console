@@ -22,7 +22,7 @@ final class DownCommand extends Command
 			->addOption('redirect', null, InputOption::VALUE_REQUIRED, 'The URI that users should be redirected to')
 			->addOption('retry', null, InputOption::VALUE_REQUIRED, 'The number of seconds after which the request may be retried')
 			->addOption('secret', null, InputOption::VALUE_REQUIRED, 'The secret phrase that may be used to bypass maintenance mode')
-			->addOption('status', null, InputOption::VALUE_REQUIRED, 'The status code that should be used when returning the maintenance mode response', 503)
+			->addOption('status', null, InputOption::VALUE_REQUIRED, 'The HTTP status code (100-599) returned during maintenance mode', 503)
 			->addOption('json', null, InputOption::VALUE_NONE, 'Output results as JSON');
 	}
 
@@ -31,15 +31,20 @@ final class DownCommand extends Command
 		$json = (bool) $input->getOption('json');
 		$wire = \ProcessWire\wire();
 		if (!$wire) {
-			if ($json) {
-				return $this->outputJsonError($output, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
-			}
-			\Laravel\Prompts\error('ProcessWire environment not found.');
-			return Command::FAILURE;
+			return $this->failCommand($output, $json, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
+		}
+
+		$statusCode = (int) $input->getOption('status');
+		if ($statusCode < 100 || $statusCode > 599) {
+			return $this->failCommand($output, $json, 'INVALID_STATUS', 'HTTP status code must be between 100 and 599.');
 		}
 
 		try {
-			$file = $wire->config->paths->site . 'down.json';
+			$file = (string) $wire->config->paths->site . 'down.json';
+
+			if (is_link($file)) {
+				throw new \RuntimeException('Refusing to write maintenance flag through a symbolic link.');
+			}
 
 			if (file_exists($file)) {
 				if ($json) {
@@ -49,15 +54,19 @@ final class DownCommand extends Command
 				return Command::SUCCESS;
 			}
 
+			$retryOpt = $input->getOption('retry');
 			$payload = [
 				'redirect' => $input->getOption('redirect'),
-				'retry' => $input->getOption('retry'),
+				'retry' => ($retryOpt !== null && $retryOpt !== '') ? max(0, (int) $retryOpt) : null,
 				'secret' => $input->getOption('secret'),
-				'status' => (int) $input->getOption('status'),
+				'status' => $statusCode,
 				'time' => time(),
 			];
 
-			file_put_contents($file, json_encode($payload, JSON_PRETTY_PRINT));
+			$encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+			if ($encoded === false || file_put_contents($file, $encoded) === false) {
+				throw new \RuntimeException("Unable to write {$file}.");
+			}
 			@chmod($file, 0600);
 
 			if ($json) {
@@ -69,30 +78,29 @@ final class DownCommand extends Command
 			}
 
 			\Laravel\Prompts\info('Application is now in maintenance mode.');
-			
 			\Laravel\Prompts\note(
-				"Note: The maintenance flag file is stored at site/down.json (NOT web-accessible).\n" .
-				"Make sure your site/init.php checks for this file and handles the response. \n" .
-				"Example snippet for site/init.php:\n" .
-				"if (file_exists(\$config->paths->site . 'down.json')) {\n" . 
-				"    \$down = json_decode(file_get_contents(\$config->paths->site . 'down.json'), true);\n" . 
-				"    // verify \$down['secret'] from \$_GET or \$_COOKIE, otherwise exit / redirect\n" . 
-				"    if(empty(\$down['secret']) || \$input->get('secret') !== \$down['secret']) {\n" . 
-				"       if(!empty(\$down['redirect'])) \$session->redirect(\$down['redirect']);\n" .
-				"       http_response_code(\$down['status'] ?? 503);\n" .
-				"       die('Site is under maintenance.');\n" . 
-				"    }\n" . 
-				"}"
+				"Note: The maintenance flag file is stored at site/down.json (ensure your web server blocks direct access to /site/*.json).\n"
+				. "Add an early check in site/init.php (guarding PHP_SAPI !== 'cli' so 'wire up' keeps working):\n"
+				. "\$downFile = \$config->paths->site . 'down.json';\n"
+				. "if (is_file(\$downFile) && PHP_SAPI !== 'cli') {\n"
+				. "\t\$down = json_decode((string) file_get_contents(\$downFile), true) ?: [];\n"
+				. "\t\$secret = (string) (\$down['secret'] ?? '');\n"
+				. "\tif (\$secret === '' || !hash_equals(\$secret, (string) \$input->get('secret'))) {\n"
+				. "\t\tif (!empty(\$down['redirect'])) {\n"
+				. "\t\t\t\$session->redirect((string) \$down['redirect']);\n"
+				. "\t\t}\n"
+				. "\t\tif (!empty(\$down['retry'])) {\n"
+				. "\t\t\theader('Retry-After: ' . (int) \$down['retry']);\n"
+				. "\t\t}\n"
+				. "\t\thttp_response_code((int) (\$down['status'] ?? 503));\n"
+				. "\t\texit('Site is under maintenance.');\n"
+				. "\t}\n"
+				. "}"
 			);
 
 			return Command::SUCCESS;
-
-		} catch (\Exception $e) {
-			if ($json) {
-				return $this->outputJsonError($output, 'MAINTENANCE_ERROR', 'Failed to enter maintenance mode: ' . $e->getMessage());
-			}
-			\Laravel\Prompts\error('Failed to enter maintenance mode: ' . $e->getMessage());
-			return Command::FAILURE;
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $json, 'MAINTENANCE_ERROR', 'Failed to enter maintenance mode: ' . $e->getMessage());
 		}
 	}
 }

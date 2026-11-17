@@ -41,12 +41,12 @@ final class BackupListCommand extends Command
 
 		$files = array_values(array_filter(
 			scandir($dir) ?: [],
-			fn(string $f): bool => str_ends_with(strtolower($f), '.sql') && is_file($dir . $f)
+			fn(string $f): bool => str_ends_with(strtolower($f), '.sql') && !is_link($dir . $f) && is_file($dir . $f)
 		));
 		usort($files, fn(string $a, string $b): int => (int) filemtime($dir . $b) <=> (int) filemtime($dir . $a));
 		$files = array_slice($files, 0, $limit);
 
-		if (!$files) {
+		if ($files === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0]);
 			}
@@ -59,7 +59,7 @@ final class BackupListCommand extends Command
 		foreach ($files as $f) {
 			$sizeBytes = (int) filesize($dir . $f);
 			$mtime = (int) filemtime($dir . $f);
-			$rows[] = [$f, (int) ($sizeBytes / 1024), date('Y-m-d H:i', $mtime)];
+			$rows[] = [$f, (string) ((int) ($sizeBytes / 1024)), date('Y-m-d H:i', $mtime)];
 			$items[] = [
 				'file' => $f,
 				'size' => $sizeBytes,

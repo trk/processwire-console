@@ -30,8 +30,8 @@ final class QueueClearCommand extends Command
 		$asJson = (bool) $input->getOption('json');
 
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run queue:clear non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run queue:clear non-interactively.');
 			}
 			if (!\Laravel\Prompts\confirm('Are you sure you want to delete all failed jobs? This action cannot be undone.', default: false)) {
 				\Laravel\Prompts\note('Action canceled.');
@@ -41,6 +41,7 @@ final class QueueClearCommand extends Command
 
 		try {
 			$manager = new QueueManager();
+			$manager->ensureTables();
 			$deleted = $manager->clearFailedJobs();
 
 			if ($asJson) {
@@ -50,12 +51,7 @@ final class QueueClearCommand extends Command
 			\Laravel\Prompts\info('Failed jobs have been successfully cleared.');
 			return Command::SUCCESS;
 		} catch (\Throwable $e) {
-			$msg = 'Failed to clear jobs: ' . $e->getMessage();
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CLEAR_FAILED', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'CLEAR_FAILED', 'Failed to clear jobs: ' . $e->getMessage());
 		}
 	}
 }

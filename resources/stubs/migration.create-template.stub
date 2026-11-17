@@ -27,9 +27,13 @@ return new class {
 		$templates->save($template);
 
 		// Create template file
-		$templateFile = wire('config')->paths->templates . $this->templateName . '.php';
+		$safeFile = basename($this->templateName) . '.php';
+		$templateFile = wire('config')->paths->templates . $safeFile;
 		if (!file_exists($templateFile)) {
-			file_put_contents($templateFile, "<?php\n\nnamespace ProcessWire;\n\n/** @var Page \$page */\n?>\n<h1><?= \$page->title ?></h1>\n");
+			file_put_contents(
+				$templateFile,
+				"<?php\n\ndeclare(strict_types=1);\n\nnamespace ProcessWire;\n\n/** @var Page \$page */\n/** @var Sanitizer \$sanitizer */\n?>\n<h1><?= \$sanitizer->entities((string) \$page->title) ?></h1>\n"
+			);
 		}
 	}
 
@@ -41,7 +45,8 @@ return new class {
 		}
 
 		// Guard: template must not have any pages using it
-		$pageCount = wire('pages')->count("template={$this->templateName}, include=all");
+		$safeTplSelector = wire('sanitizer')->selectorValue($this->templateName);
+		$pageCount = wire('pages')->count("template={$safeTplSelector}, include=all");
 		if ($pageCount > 0) {
 			throw new WireException(
 				"Cannot delete template '{$this->templateName}' — {$pageCount} page(s) are using it. "
@@ -50,7 +55,8 @@ return new class {
 		}
 
 		// Remove template file
-		$templateFile = wire('config')->paths->templates . $this->templateName . '.php';
+		$safeFile = basename($this->templateName) . '.php';
+		$templateFile = wire('config')->paths->templates . $safeFile;
 		if (file_exists($templateFile)) {
 			unlink($templateFile);
 		}

@@ -29,19 +29,14 @@ final class ScheduleRunCommand extends Command
 	{
 		$asJson = (bool) $input->getOption('json');
 		$wire = \ProcessWire\wire();
-		if (!$wire) {
-			$msg = 'ProcessWire environment not found.';
-			if ($asJson) {
-				return $this->outputJsonError($output, 'ENV_NOT_FOUND', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+		if (!($wire instanceof \ProcessWire\ProcessWire)) {
+			return $this->failCommand($output, $asJson, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
 		}
 
 		$discoverer = new FeatureDiscoverer($wire);
 		$tasks = $discoverer->discoverClasses('schedule', '*Task.php', Task::class);
 
-		if (empty($tasks)) {
+		if ($tasks === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, ['executed' => [], 'errors' => []]);
 			}
@@ -53,38 +48,53 @@ final class ScheduleRunCommand extends Command
 		$errors = [];
 
 		foreach ($tasks as $name => $fqcn) {
-			/** @var Task $instance */
-			$instance = new $fqcn($wire);
-			$event = new Event();
-			$instance->schedule($event);
+			try {
+				/** @var Task $instance */
+				$instance = new $fqcn($wire);
+				$event = new Event();
+				$instance->schedule($event);
 
-			if ($event->isDue()) {
-				if (!$asJson) {
-					\Laravel\Prompts\info("Running scheduled task: {$name}");
-				}
-				try {
+				if ($event->isDue()) {
+					if (!$asJson) {
+						\Laravel\Prompts\info("Running scheduled task: {$name}");
+					}
 					$instance->handle();
 					$executed[] = $name;
-				} catch (\Throwable $e) {
-					$errors[$name] = $e->getMessage();
-					if (!$asJson) {
-						\Laravel\Prompts\error("Task {$name} failed: " . $e->getMessage());
-					}
+				}
+			} catch (\Throwable $e) {
+				$errors[$name] = $e->getMessage();
+				if (!$asJson) {
+					\Laravel\Prompts\error("Task {$name} failed: " . $e->getMessage());
 				}
 			}
 		}
 
 		if ($asJson) {
+			if ($errors !== []) {
+				$output->writeln((string) json_encode([
+					'ok' => false,
+					'data' => [
+						'executed' => $executed,
+						'errors' => $errors,
+					],
+					'error' => [
+						'code' => 'SCHEDULE_FAILED',
+						'message' => count($errors) . ' scheduled task(s) failed.',
+					],
+				], JSON_UNESCAPED_SLASHES));
+				return Command::FAILURE;
+			}
+
 			return $this->outputJsonSuccess($output, [
 				'executed' => $executed,
 				'errors' => $errors,
 			]);
 		}
 
-		if (empty($executed) && empty($errors)) {
+		if ($executed === [] && $errors === []) {
 			\Laravel\Prompts\info('No scheduled commands are ready to run.');
 		}
 
-		return Command::SUCCESS;
+		return $errors === [] ? Command::SUCCESS : Command::FAILURE;
 	}
 }

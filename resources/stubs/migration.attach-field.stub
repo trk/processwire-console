@@ -37,8 +37,11 @@ return new class {
 		// Guard: detaching a field from a template DELETES all data
 		// stored in that field for pages using this template.
 		// Check if any pages have data in this field before removing.
+		$sanitizer = wire('sanitizer');
+		$safeTpl = $sanitizer->selectorValue($this->templateName);
+		$safeField = $sanitizer->fieldName($this->fieldName);
 		$pagesWithData = wire('pages')->count(
-			"template={$this->templateName}, {$this->fieldName}!='', include=all"
+			"template={$safeTpl}, {$safeField}!='', include=all"
 		);
 		if ($pagesWithData > 0) {
 			throw new WireException(

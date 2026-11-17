@@ -21,6 +21,7 @@ return new class {
 		$permissions = wire('permissions');
 
 		$role = $roles->add($this->roleName);
+		$role->of(false);
 		$role->title = $this->roleTitle;
 		$role->save();
 
@@ -41,7 +42,7 @@ return new class {
 		}
 
 		// Guard: role must not be assigned to any users
-		$usersWithRole = wire('users')->count("roles={$role}, include=all");
+		$usersWithRole = wire('users')->count("roles={$role->id}, include=all");
 		if ($usersWithRole > 0) {
 			throw new WireException(
 				"Cannot delete role '{$this->roleName}' — {$usersWithRole} user(s) have this role. "

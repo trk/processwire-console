@@ -28,10 +28,19 @@ final class MigrateRollbackCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$steps = $input->getOption('step') ? (int) $input->getOption('step') : 0;
+		$stepOpt = $input->getOption('step');
 		$dryRun = (bool) $input->getOption('dry-run');
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
+
+		$steps = 0;
+		if ($stepOpt !== null && $stepOpt !== '') {
+			$stepStr = trim((string) $stepOpt);
+			if (!ctype_digit($stepStr) || (int) $stepStr < 1) {
+				return $this->failCommand($output, $asJson, 'INVALID_STEP', 'Option --step must be a positive integer.');
+			}
+			$steps = (int) $stepStr;
+		}
 
 		$migrator = new Migrator();
 
@@ -42,7 +51,7 @@ final class MigrateRollbackCommand extends Command
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $data);
 			}
-			if (empty($names)) {
+			if ($names === []) {
 				\Laravel\Prompts\note('Nothing to rollback.');
 			} else {
 				\Laravel\Prompts\note('Dry-run: ' . count($names) . ' migration(s) would be rolled back:');
@@ -54,8 +63,8 @@ final class MigrateRollbackCommand extends Command
 		}
 
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run migrate:rollback non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run migrate:rollback non-interactively.');
 			}
 			if (!\Laravel\Prompts\confirm('Rollback migrations?', default: false)) {
 				\Laravel\Prompts\note('Aborted.');

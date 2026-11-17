@@ -44,16 +44,23 @@ final class MigrateStatusCommand extends Command
 
 		$appliedCount = 0;
 		$pendingCount = 0;
+		$missingCount = 0;
 		$rows = [];
 
 		foreach ($status as $row) {
-			$statusLabel = $row['status'] === 'applied' ? 'Applied' : 'Pending';
+			$statusLabel = match ($row['status']) {
+				'applied' => 'Applied',
+				'missing' => 'Missing',
+				default => 'Pending',
+			};
 			$batchLabel = $row['batch'] !== null ? (string) $row['batch'] : '-';
 
 			$rows[] = [$row['name'], $statusLabel, $batchLabel];
 
 			if ($row['status'] === 'applied') {
 				$appliedCount++;
+			} elseif ($row['status'] === 'missing') {
+				$missingCount++;
 			} else {
 				$pendingCount++;
 			}
@@ -64,7 +71,11 @@ final class MigrateStatusCommand extends Command
 			rows: $rows
 		);
 
-		\Laravel\Prompts\note("{$appliedCount} applied, {$pendingCount} pending.");
+		$summary = "{$appliedCount} applied, {$pendingCount} pending";
+		if ($missingCount > 0) {
+			$summary .= ", {$missingCount} missing";
+		}
+		\Laravel\Prompts\note($summary . '.');
 
 		return Command::SUCCESS;
 	}

@@ -30,24 +30,21 @@ final class LogClearCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$names = (array) $input->getArgument('name');
+		$names = array_values(array_map('strval', (array) $input->getArgument('name')));
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
-		if (empty($names)) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'MISSING_NAME', 'Provide at least one log name.');
-			}
+		if ($names === [] && $this->canPrompt($input, $asJson, $force)) {
 			$names = $this->multiselectLogs('Select log files to clear');
-			if (empty($names)) {
-				error('No log files selected or available.');
-				return Command::FAILURE;
-			}
+		}
+
+		if ($names === []) {
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide at least one log name.');
 		}
 
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run log:clear non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run log:clear non-interactively.');
 			}
 			$list = implode(', ', $names);
 			if (!confirm("Clear log files '{$list}'?", false)) {
@@ -58,11 +55,21 @@ final class LogClearCommand extends Command
 
 		$results = [];
 		$allOk = true;
+		$logsDir = \ProcessWire\wire('config')->paths->logs;
 
 		foreach ($names as $name) {
-			$file = basename((string) $name);
-			$path = \ProcessWire\wire('config')->paths->logs . $file . '.txt';
-			if (!is_file($path)) {
+			$file = $this->normalizeLogChannel($name);
+			if ($file === '') {
+				if (!$asJson) {
+					error("Invalid log name: {$name}");
+				}
+				$results[$name] = false;
+				$allOk = false;
+				continue;
+			}
+
+			$path = $logsDir . $file . '.txt';
+			if (!is_file($path) || is_link($path)) {
 				if (!$asJson) {
 					error("Log file not found: {$path}");
 				}

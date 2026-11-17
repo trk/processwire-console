@@ -27,11 +27,16 @@ final class QueueRetryCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$id = (string) $input->getArgument('id');
+		$id = trim((string) $input->getArgument('id'));
 		$asJson = (bool) $input->getOption('json');
+
+		if ($id !== 'all' && (!ctype_digit($id) || (int) $id < 1)) {
+			return $this->failCommand($output, $asJson, 'INVALID_ID', "Invalid failed job ID '{$id}'. Expected a positive integer or 'all'.");
+		}
 
 		try {
 			$manager = new QueueManager();
+			$manager->ensureTables();
 
 			if ($id === 'all') {
 				$count = $manager->retryAllFailed();
@@ -50,12 +55,7 @@ final class QueueRetryCommand extends Command
 			$retried = $manager->retryJob($jobId);
 
 			if (!$retried) {
-				$msg = "Failed job with ID [{$jobId}] not found.";
-				if ($asJson) {
-					return $this->outputJsonError($output, 'NOT_FOUND', $msg);
-				}
-				\Laravel\Prompts\error($msg);
-				return Command::FAILURE;
+				return $this->failCommand($output, $asJson, 'NOT_FOUND', "Failed job with ID [{$jobId}] not found.");
 			}
 
 			if ($asJson) {
@@ -65,12 +65,7 @@ final class QueueRetryCommand extends Command
 			\Laravel\Prompts\info("Job [{$jobId}] has been pushed back onto the queue.");
 			return Command::SUCCESS;
 		} catch (\Throwable $e) {
-			$msg = 'Error retrying job: ' . $e->getMessage();
-			if ($asJson) {
-				return $this->outputJsonError($output, 'RETRY_FAILED', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'RETRY_FAILED', 'Error retrying job: ' . $e->getMessage());
 		}
 	}
 }

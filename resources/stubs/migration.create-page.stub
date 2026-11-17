@@ -14,7 +14,9 @@ return new class {
 	public function up(): void
 	{
 		$pages = wire('pages');
-		$parent = $pages->get($this->parentPath);
+		$sanitizer = wire('sanitizer');
+		$safeParent = $sanitizer->selectorValue($this->parentPath);
+		$parent = $pages->get("path={$safeParent}, include=all");
 
 		if (!$parent || !$parent->id) {
 			throw new \RuntimeException("Parent page '{$this->parentPath}' not found.");
@@ -25,8 +27,7 @@ return new class {
 			throw new \RuntimeException("Template '{$this->templateName}' not found.");
 		}
 
-		$page = new Page();
-		$page->template = $template;
+		$page = $pages->newPage(['template' => $template]);
 		$page->parent = $parent;
 		$page->name = $this->pageName;
 		$page->title = $this->pageTitle;
@@ -35,7 +36,15 @@ return new class {
 
 	public function down(): void
 	{
-		$page = wire('pages')->get("name={$this->pageName}, parent={$this->parentPath}, include=all");
+		$sanitizer = wire('sanitizer');
+		$safeName = $sanitizer->selectorValue($this->pageName);
+		$safeParent = $sanitizer->selectorValue($this->parentPath);
+		$parent = wire('pages')->get("path={$safeParent}, include=all");
+		if (!$parent || !$parent->id) {
+			return;
+		}
+
+		$page = wire('pages')->get("name={$safeName}, parent={$parent->id}, include=all");
 		if (!$page || !$page->id) {
 			return;
 		}

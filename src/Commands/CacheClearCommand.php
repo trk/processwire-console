@@ -34,20 +34,20 @@ final class CacheClearCommand extends Command
 		}
 
 		$compiledPath = \ProcessWire\wire('config')->paths->cache . 'FileCompiler/';
-		if (is_dir($compiledPath)) {
+		if (is_dir($compiledPath) && !is_link(rtrim($compiledPath, '/'))) {
 			$files = new \RecursiveIteratorIterator(
 				new \RecursiveDirectoryIterator($compiledPath, \RecursiveDirectoryIterator::SKIP_DOTS),
 				\RecursiveIteratorIterator::CHILD_FIRST
 			);
 			foreach ($files as $fileinfo) {
-				$realPath = $fileinfo->getRealPath();
-				if ($realPath === false) {
-					continue;
-				}
-				if ($fileinfo->isDir()) {
-					@rmdir($realPath);
+				/** @var \SplFileInfo $fileinfo */
+				$pathname = $fileinfo->getPathname();
+				if ($fileinfo->isLink()) {
+					@unlink($pathname);
+				} elseif ($fileinfo->isDir()) {
+					@rmdir($pathname);
 				} else {
-					@unlink($realPath);
+					@unlink($pathname);
 				}
 			}
 			$cleared[] = 'FileCompiler';

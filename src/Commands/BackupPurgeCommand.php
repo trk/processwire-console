@@ -33,10 +33,20 @@ final class BackupPurgeCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$keepOpt = $input->getOption('keep');
-		$days = (int) $input->getOption('days');
+		$daysRaw = $input->getOption('days');
+		$days = (int) $daysRaw;
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
+
+		if ($keepOpt !== null) {
+			$keepStr = trim((string) $keepOpt);
+			if ($keepStr === '' || !ctype_digit($keepStr)) {
+				return $this->failCommand($output, $asJson, 'INVALID_KEEP', 'Option --keep must be a non-negative integer.');
+			}
+		} elseif ($days < 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_DAYS', 'Option --days must be at least 1.');
+		}
 
 		$dir = \ProcessWire\wire('config')->paths->assets . 'backups/database/';
 		if (!is_dir($dir)) {
@@ -53,7 +63,7 @@ final class BackupPurgeCommand extends Command
 				continue;
 			}
 			$path = $dir . $f;
-			if (is_file($path)) {
+			if (!is_link($path) && is_file($path)) {
 				$sqlFiles[] = $path;
 			}
 		}
@@ -89,7 +99,7 @@ final class BackupPurgeCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		if (empty($candidates)) {
+		if ($candidates === []) {
 			$data = ['deleted' => 0, 'files' => []];
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $data);
@@ -99,8 +109,8 @@ final class BackupPurgeCommand extends Command
 		}
 
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run backup:purge non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run backup:purge non-interactively.');
 			}
 			$desc = $keepOpt !== null
 				? 'Delete ' . count($candidates) . " backup file(s), keeping the {$keepOpt} newest?"

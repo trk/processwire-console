@@ -28,13 +28,17 @@ final class DbSeedCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$className = (string) $input->getOption('class');
+		$className = trim((string) $input->getOption('class'));
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
 
+		if (!$this->isValidIdentifier($className)) {
+			return $this->failCommand($output, $asJson, 'INVALID_CLASS', "Invalid seeder class name '{$className}'.");
+		}
+
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run db:seed non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run db:seed non-interactively.');
 			}
 			if (!\Laravel\Prompts\confirm('Are you sure you want to seed the database? This might insert bulk fake data.', default: false)) {
 				\Laravel\Prompts\warning('Seeding cancelled.');
@@ -43,19 +47,14 @@ final class DbSeedCommand extends Command
 		}
 
 		$wire = \ProcessWire\wire();
-		if (!$wire) {
-			$msg = 'ProcessWire environment not found.';
-			if ($asJson) {
-				return $this->outputJsonError($output, 'ENV_NOT_FOUND', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+		if (!($wire instanceof \ProcessWire\ProcessWire)) {
+			return $this->failCommand($output, $asJson, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
 		}
 
 		$discoverer = new FeatureDiscoverer($wire);
 		$seeders = $discoverer->discoverClasses('seeders', '*Seeder.php', Seeder::class);
 
-		if (empty($seeders)) {
+		if ($seeders === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, ['seeded' => [], 'message' => 'No seeders found.']);
 			}
@@ -64,12 +63,7 @@ final class DbSeedCommand extends Command
 		}
 
 		if ($className !== 'DatabaseSeeder' && !isset($seeders[$className])) {
-			$msg = "Seeder class not found: {$className}";
-			if ($asJson) {
-				return $this->outputJsonError($output, 'NOT_FOUND', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Seeder class not found: {$className}");
 		}
 
 		$seeded = [];
@@ -88,11 +82,7 @@ final class DbSeedCommand extends Command
 				}
 			}
 		} catch (\Throwable $e) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'SEED_ERROR', $e->getMessage());
-			}
-			\Laravel\Prompts\error($e->getMessage());
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'SEED_ERROR', $e->getMessage());
 		}
 
 		if ($asJson) {

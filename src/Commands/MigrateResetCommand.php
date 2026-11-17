@@ -30,8 +30,8 @@ final class MigrateResetCommand extends Command
 		$asJson = (bool) $input->getOption('json');
 
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run migrate:reset non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run migrate:reset non-interactively.');
 			}
 			if (!\Laravel\Prompts\confirm('This will rollback ALL applied migrations. Continue?', default: false)) {
 				\Laravel\Prompts\note('Aborted.');

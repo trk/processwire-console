@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 
@@ -23,7 +22,7 @@ final class DbRestoreCommand extends Command
 		$this
 			->setName('db:restore')
 			->setDescription('Restore database from a .sql backup file.')
-			->addOption('file', null, InputOption::VALUE_REQUIRED, 'Path to .sql file (required)')
+			->addOption('file', null, InputOption::VALUE_REQUIRED, 'Path or filename of .sql backup (required)')
 			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Only validate file access without executing')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output')
 			->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations');
@@ -31,23 +30,28 @@ final class DbRestoreCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$file = (string) $input->getOption('file');
+		$file = trim((string) $input->getOption('file'));
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
 		if ($file === '') {
-			$msg = 'Provide --file.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_FILE', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_FILE', 'Provide --file.');
 		}
 		if (str_ends_with(strtolower($file), '.gz') || !str_ends_with(strtolower($file), '.sql')) {
-			$msg = 'Only extracted .sql files are supported.';
-			return $asJson ? $this->outputJsonError($output, 'UNSUPPORTED_FORMAT', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'UNSUPPORTED_FORMAT', 'Only extracted .sql files are supported.');
 		}
 
-		$assetsDir = \ProcessWire\wire('config')->paths->assets . 'backups/database/';
+		$assetsDir = (string) \ProcessWire\wire('config')->paths->assets . 'backups/database/';
 		$realAssetsDir = realpath($assetsDir);
-		$realFile = realpath($file);
+		$candidatePath = (!str_contains($file, '/') && !str_contains($file, '\\'))
+			? $assetsDir . basename($file)
+			: $file;
+		$realFile = realpath($candidatePath);
+		if ($realFile === false && basename($file) === $file) {
+			$realFile = realpath($assetsDir . $file);
+		}
+
 		if (
 			$realFile === false
 			|| $realAssetsDir === false
@@ -55,8 +59,12 @@ final class DbRestoreCommand extends Command
 			|| !is_file($realFile)
 			|| !is_readable($realFile)
 		) {
-			$msg = 'SQL file must reside under site/assets/backups/database/ and be readable.';
-			return $asJson ? $this->outputJsonError($output, 'FILE_NOT_READABLE', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'FILE_NOT_READABLE',
+				'SQL file must reside under site/assets/backups/database/ and be readable.'
+			);
 		}
 
 		if ($dryRun) {
@@ -69,10 +77,10 @@ final class DbRestoreCommand extends Command
 		}
 
 		if (!$force) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run db:restore non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run db:restore non-interactively.');
 			}
-			if (!confirm('This will run SQL statements on your database. Continue?', false)) {
+			if (!confirm('This will run SQL statements on your database. Continue?', default: false)) {
 				note('Aborted.');
 				return Command::SUCCESS;
 			}
@@ -83,8 +91,7 @@ final class DbRestoreCommand extends Command
 		try {
 			$backup = $db->backups();
 			if (!$backup) {
-				$msg = 'Database backup tool not available.';
-				return $asJson ? $this->outputJsonError($output, 'BACKUP_UNAVAILABLE', $msg) : (error($msg) ?? Command::FAILURE);
+				return $this->failCommand($output, $asJson, 'BACKUP_UNAVAILABLE', 'Database backup tool not available.');
 			}
 			if (!$asJson) {
 				info("Restoring database from {$realFile}...");
@@ -96,19 +103,10 @@ final class DbRestoreCommand extends Command
 				if ($errors) {
 					$msg .= "\n" . implode("\n", $errors);
 				}
-				if ($asJson) {
-					return $this->outputJsonError($output, 'RESTORE_FAILED', $msg);
-				}
-				error($msg);
-				return Command::FAILURE;
+				return $this->failCommand($output, $asJson, 'RESTORE_FAILED', $msg);
 			}
 		} catch (\Throwable $e) {
-			$msg = 'Restore failed: ' . $e->getMessage();
-			if ($asJson) {
-				return $this->outputJsonError($output, 'RESTORE_FAILED', $msg);
-			}
-			error($msg);
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'RESTORE_FAILED', 'Restore failed: ' . $e->getMessage());
 		}
 
 		$data = ['file' => $realFile, 'restored' => true];
@@ -119,4 +117,3 @@ final class DbRestoreCommand extends Command
 		return Command::SUCCESS;
 	}
 }
-

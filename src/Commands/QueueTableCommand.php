@@ -41,12 +41,7 @@ final class QueueTableCommand extends Command
 			\Laravel\Prompts\info('Queue tables [queue_jobs, failed_jobs] have been created or verified.');
 			return Command::SUCCESS;
 		} catch (\Throwable $e) {
-			$msg = 'Failed to create queue tables: ' . $e->getMessage();
-			if ($asJson) {
-				return $this->outputJsonError($output, 'TABLE_ERROR', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'TABLE_ERROR', 'Failed to create queue tables: ' . $e->getMessage());
 		}
 	}
 }
