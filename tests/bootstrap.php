@@ -23,9 +23,17 @@ spl_autoload_register(static function (string $class): void {
 	foreach ($prefixes as $prefix => $baseDir) {
 		if (str_starts_with($class, $prefix)) {
 			$relativeClass = substr($class, strlen($prefix));
-			$file = $baseDir . str_replace('\\', '/', $relativeClass) . '.php';
-			if (is_file($file)) {
-				require_once $file;
+			if (preg_match('/^[A-Za-z_][A-Za-z0-9_\\\\]*$/', $relativeClass) !== 1) {
+				return;
+			}
+			$resolvedBase = realpath($baseDir);
+			if ($resolvedBase === false) {
+				continue;
+			}
+			$file = $resolvedBase . '/' . str_replace('\\', '/', $relativeClass) . '.php';
+			$realFile = realpath($file);
+			if ($realFile !== false && str_starts_with($realFile, $resolvedBase . DIRECTORY_SEPARATOR) && is_file($realFile)) {
+				require_once $realFile;
 				return;
 			}
 		}

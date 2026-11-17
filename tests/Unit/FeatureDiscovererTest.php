@@ -81,6 +81,18 @@ final class FeatureDiscovererTest extends TestCase
 		// Expect null if required subclass does not match
 		$wrongSubclass = FeatureDiscoverer::resolveClassFromFile($seederFile, $seederClass, Command::class);
 		$this->assertNull($wrongSubclass);
+
+		// Expect null for abstract subclasses so callers never instantiate abstract classes
+		$abstractClass = 'AbstractSeeder_' . substr(md5($this->tempDir), 0, 8);
+		$abstractFile = $this->tempDir . '/' . $abstractClass . '.php';
+		file_put_contents(
+			$abstractFile,
+			"<?php\ndeclare(strict_types=1);\nnamespace Site\\Seeders;\nuse Totoglu\\Console\\Database\\Seeder;\nabstract class {$abstractClass} extends Seeder {}\n"
+		);
+		$this->assertNull(FeatureDiscoverer::resolveClassFromFile($abstractFile, $abstractClass, Seeder::class));
+
+		// Reject path traversal identifiers in classBasename
+		$this->assertNull(FeatureDiscoverer::resolveClassFromFile($seederFile, '../../EvilClass', Seeder::class));
 	}
 
 	public function testDiscoverComposerCommandsFromInstalledJsonAndPathRepos(): void
@@ -160,5 +172,41 @@ final class FeatureDiscovererTest extends TestCase
 
 		$this->assertSame([], FeatureDiscoverer::readLastLines($logFile, 0));
 		$this->assertSame([], FeatureDiscoverer::readLastLines($this->tempDir . '/missing.txt', 10));
+	}
+
+	public function testDiscoverPathsFromRootsHandlesSingleAndMultiSegmentFeaturesForInstalledModulesOnly(): void
+	{
+		$siteRoot = $this->tempDir . '/site';
+		$modulesRoot = $siteRoot . '/modules';
+
+		mkdir($siteRoot . '/tests/e2e', 0777, true);
+		mkdir($modulesRoot . '/ProcessAnalytics/tests/e2e', 0777, true);
+		mkdir($modulesRoot . '/Blog/tests/e2e', 0777, true);
+		mkdir($modulesRoot . '/AdminTools/tests/e2e', 0777, true);
+		file_put_contents($modulesRoot . '/AdminTools/ProcessAdminTools.module.php', "<?php\n");
+		mkdir($modulesRoot . '/UninstalledModule/tests/e2e', 0777, true);
+
+		$installed = [
+			'ProcessAnalytics' => true,
+			'Blog' => true,
+			'ProcessAdminTools' => true,
+		];
+		$checker = static fn(string $moduleName): bool => isset($installed[$moduleName]);
+
+		$singleSegment = FeatureDiscoverer::discoverPathsFromRoots($siteRoot, $modulesRoot, 'tests', $checker);
+		$this->assertSame([
+			$siteRoot . '/tests/',
+			$modulesRoot . '/AdminTools/tests/',
+			$modulesRoot . '/Blog/tests/',
+			$modulesRoot . '/ProcessAnalytics/tests/',
+		], $singleSegment);
+
+		$nestedSegment = FeatureDiscoverer::discoverPathsFromRoots($siteRoot, $modulesRoot, 'tests/e2e', $checker);
+		$this->assertSame([
+			$siteRoot . '/tests/e2e/',
+			$modulesRoot . '/AdminTools/tests/e2e/',
+			$modulesRoot . '/Blog/tests/e2e/',
+			$modulesRoot . '/ProcessAnalytics/tests/e2e/',
+		], $nestedSegment);
 	}
 }

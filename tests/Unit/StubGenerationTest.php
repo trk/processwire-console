@@ -50,6 +50,7 @@ final class StubGenerationTest extends TestCase
 				'baseName' => 'CustomHelper',
 				'title' => addslashes("Iskender's Helper"),
 				'summary' => addslashes("A summary with 'quotes'"),
+				'author' => 'Iskender Totoglu',
 				'autoload' => 'true',
 				'singular' => 'true',
 				'icon' => 'cog',
@@ -59,6 +60,7 @@ final class StubGenerationTest extends TestCase
 				'baseName' => 'Color',
 				'title' => addslashes("Color Picker"),
 				'summary' => addslashes("Stores a color's hex value"),
+				'author' => 'Iskender Totoglu',
 				'icon' => 'paint-brush',
 			],
 			'inputfield.stub' => [
@@ -66,13 +68,16 @@ final class StubGenerationTest extends TestCase
 				'baseName' => 'Color',
 				'title' => addslashes("Color Input"),
 				'summary' => addslashes("Renders a color's input"),
+				'author' => 'Iskender Totoglu',
 				'icon' => 'paint-brush',
 			],
 			'process.stub' => [
 				'className' => 'ProcessDashboard',
 				'baseName' => 'Dashboard',
-				'title' => addslashes("Admin's Dashboard"),
+				'name' => 'dashboard',
+				'title' => addslashes("Admin's \$Dashboard"),
 				'summary' => addslashes("Process module for dashboard"),
+				'author' => 'Iskender Totoglu',
 				'icon' => 'dashboard',
 				'pageName' => 'dashboard',
 				'pageTitle' => addslashes("Admin's Dashboard"),
@@ -92,6 +97,7 @@ final class StubGenerationTest extends TestCase
 				$content = str_replace('{{' . $key . '}}', $val, $content);
 			}
 
+			$this->assertDoesNotMatchRegularExpression('/\{\{[A-Za-z0-9_]+\}\}/', $content, "{$stubFile} contains unresolved placeholder");
 			$this->assertValidPhpSyntax($content, $stubFile);
 
 			if ($stubFile === 'fieldtype.stub') {
@@ -102,6 +108,10 @@ final class StubGenerationTest extends TestCase
 			if ($stubFile === 'inputfield.stub') {
 				$this->assertStringContainsString('htmlspecialchars((string) $this->attr(\'value\'), ENT_QUOTES, \'UTF-8\')', $content);
 				$this->assertStringContainsString('$input[$name]', $content);
+			}
+
+			if ($stubFile === 'process.stub') {
+				$this->assertStringContainsString('sanitizer->entities(', $content);
 			}
 		}
 	}
@@ -126,14 +136,13 @@ final class StubGenerationTest extends TestCase
 			'{{namespace}}' => 'Site\\Generated',
 			'{{class}}' => 'SampleGeneratedClass',
 			'{{className}}' => 'SampleGeneratedClass',
-			'{{fieldName}}' => 'featured_image',
-			'{{fieldType}}' => 'FieldtypeImage',
-			'{{templateName}}' => 'blog-post',
-			'{{parentPath}}' => '/',
-			'{{pageName}}' => 'sample-page',
-			'{{pageTitle}}' => addslashes("Sample's Page"),
-			'{{roleName}}' => 'editor',
-			'{{moduleName}}' => 'ProcessRedirects',
+			'{{name}}' => 'sample_item',
+			'{{fieldtype}}' => 'FieldtypeImage',
+			'{{label}}' => addslashes("Sample's Label"),
+			'{{template}}' => 'blog-post',
+			'{{field}}' => 'featured_image',
+			'{{parent}}' => '/',
+			'{{title}}' => addslashes("Sample's Page"),
 			'{{description}}' => addslashes("Run daily sync for O'Reilly feed"),
 		];
 
@@ -145,7 +154,40 @@ final class StubGenerationTest extends TestCase
 			$this->assertStringContainsString('declare(strict_types=1);', $content, "{$stubFile} must declare strict_types=1");
 
 			$rendered = str_replace(array_keys($replacements), array_values($replacements), $content);
+			$this->assertDoesNotMatchRegularExpression('/\{\{[A-Za-z0-9_]+\}\}/', $rendered, "{$stubFile} contains unresolved placeholder");
 			$this->assertValidPhpSyntax($rendered, $stubFile);
+
+			if ($stubFile === 'migration.create-template.stub') {
+				$this->assertStringContainsString('sanitizer->entities(', $rendered);
+			}
+		}
+	}
+
+	public function testPlaywrightStubsRenderCleanTypeScriptWithoutUnresolvedPlaceholders(): void
+	{
+		$playwrightStubs = [
+			'playwright.config.stub',
+			'playwright.global-setup.stub',
+			'playwright.global-teardown.stub',
+			'playwright.helpers.stub',
+			'playwright.spec.stub',
+		];
+
+		$replacements = [
+			'{{baseUrl}}' => 'https://processwire.test',
+			'{{adminUrl}}' => '/processwire/',
+			'{{title}}' => 'WireEntries: Workspace Flow',
+			'{{helpersImportPath}}' => '../../../../../tests/e2e/helpers',
+		];
+
+		foreach ($playwrightStubs as $stubFile) {
+			$path = $this->stubsDir . '/' . $stubFile;
+			$this->assertFileExists($path);
+
+			$content = (string) file_get_contents($path);
+			$rendered = str_replace(array_keys($replacements), array_values($replacements), $content);
+
+			$this->assertDoesNotMatchRegularExpression('/\{\{[A-Za-z0-9_]+\}\}/', $rendered, "{$stubFile} contains unresolved placeholder");
 		}
 	}
 }
