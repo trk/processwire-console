@@ -5,13 +5,13 @@
 
 <p align="center">
   A professional CLI for <a href="https://processwire.com">ProcessWire CMS/CMF</a>.<br>
-  74 production-ready commands · JSON output for AI agents · Composer-driven extensibility
+  75 production-ready commands · JSON output for AI agents · Composer-driven extensibility
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/PHP-8.3%2B-777BB4?logo=php&logoColor=white" alt="PHP 8.3+">
   <img src="https://img.shields.io/badge/ProcessWire-3.x-2196F3?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PC9zdmc+" alt="ProcessWire 3.x">
-  <img src="https://img.shields.io/badge/Symfony_Console-7.x-000000?logo=symfony" alt="Symfony Console 7.x">
+  <img src="https://img.shields.io/badge/Symfony_Console-7.x_%7C_8.x-000000?logo=symfony" alt="Symfony Console 7.x / 8.x">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
 </p>
 
@@ -40,6 +40,7 @@
   - [Task Scheduling](#task-scheduling)
   - [Maintenance Mode](#maintenance-mode)
   - [Tinker (REPL)](#tinker-repl)
+  - [Version](#version)
 - [JSON Output (Machine-Readable)](#json-output-machine-readable)
 - [Interactive Mode](#interactive-mode)
 - [Extending the Console](#extending-the-console)
@@ -52,7 +53,7 @@
 
 ## Why ProcessWire Console?
 
-ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills that gap with **74 production-ready commands** purpose-built for ProcessWire's architecture:
+ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills that gap with **75 production-ready commands** purpose-built for ProcessWire's architecture:
 
 | Domain | Commands | Description |
 |--------|----------|-------------|
@@ -70,8 +71,8 @@ ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills th
 | Scheduling | 1 command | Run due scheduled tasks |
 | Maintenance | 2 commands | Put the application up or down |
 | Runtime | 2 commands | Interactive REPL (`tinker`), version info (`version`) |
-| Testing | 1 command | Run Pest test suites (`test`) |
-| **Total** | **74 commands** | |
+| Testing | 2 commands | Run Pest (`test`) and Playwright E2E (`test:e2e`) suites |
+| **Total** | **75 commands** | |
 
 Every command supports `--json` for machine-readable output; mutation commands support `--dry-run` for safe previews, and destructive commands support `--force` for non-interactive scripting.
 
@@ -83,13 +84,7 @@ Every command supports `--json` for machine-readable output; mutation commands s
 composer require trk/processwire-console
 ```
 
-A `wire` symlink is created at your project root automatically. If it isn't, run:
-
-```bash
-php vendor/bin/wire list
-```
-
-### Verify Installation
+Composer installs the executable at `vendor/bin/wire`. Verify installation with:
 
 ```bash
 php vendor/bin/wire list
@@ -233,10 +228,11 @@ php vendor/bin/wire page:find "parent=/products/, sort=-created, limit=5" --json
 
 **Options:**
 
-| Option | Description |
-|--------|-------------|
-| `selector` | Argument: ProcessWire selector string (required) |
-| `--json` | Output as JSON |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `selector` | | Argument: ProcessWire selector string |
+| `--limit` | `-l` | Maximum number of results when not set in selector (default: `50`) |
+| `--json` | | Output as JSON |
 
 ---
 
@@ -518,7 +514,7 @@ php vendor/bin/wire user:create --name=john --email=john@example.com --password=
 
 # Update a user
 php vendor/bin/wire user:update --name=john --email=new@example.com
-php vendor/bin/wire user:update --name=john --add-role=admin --remove-role=guest
+php vendor/bin/wire user:update --name=john --add-role=editor --remove-role=author
 
 # Delete a user
 php vendor/bin/wire user:delete --name=john
@@ -561,7 +557,7 @@ php vendor/bin/wire permission:delete --name=my-custom-permission
 
 #### `cache:clear`
 
-Clears compiled files, session caches, and file caches.
+Clears module caches and compiled `FileCompiler` template files.
 
 ```bash
 php vendor/bin/wire cache:clear
@@ -676,16 +672,19 @@ php vendor/bin/wire db:restore --file=backup-2026-04-08.sql --force
 
 ```bash
 php vendor/bin/wire backup:list
-php vendor/bin/wire backup:list --json
+php vendor/bin/wire backup:list --limit=20 --json
 ```
 
 #### `backup:purge`
 
-Remove old backup files, keeping only the most recent N backups.
+Remove old backup files by count (`--keep`) or age (`--days`, default `30`).
 
 ```bash
 # Keep the 5 most recent backups
 php vendor/bin/wire backup:purge --keep=5
+
+# Delete backups older than 14 days
+php vendor/bin/wire backup:purge --days=14 --dry-run
 php vendor/bin/wire backup:purge --keep=3 --force
 ```
 
@@ -740,6 +739,25 @@ php vendor/bin/wire make:migration create_blog_section
 php vendor/bin/wire make:migration add_body_field --type=create-field --field=body
 ```
 
+#### `make:queue`
+
+Generate a new file-based Queue class (`site/queue/` or `site/modules/<Module>/queue/`).
+
+```bash
+php vendor/bin/wire make:queue SendEmailQueue
+php vendor/bin/wire make:queue CompileImagesQueue --module=ProcessAnalytics
+```
+
+**Options:**
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `name` | | Class name (auto-suffixed with `Queue` if omitted) |
+| `--module` | `-m` | Place inside `site/modules/<Module>/queue/` |
+| `--json` | | Output as JSON |
+
+> See also [`make:seeder`](#makeseeder), [`make:test`](#maketest), and [`make:task`](#maketask) in their respective sections.
+
 ---
 
 ### Migrations
@@ -769,10 +787,10 @@ php vendor/bin/wire make:migration attach_images_to_blog --type=attach-field --t
 php vendor/bin/wire make:migration create_about_page --type=create-page --template=basic-page --parent=/ --label="About Us"
 
 # Create a role with permissions
-php vendor/bin/wire make:migration create_editor_role --type=create-role --label="Content Editor"
+php vendor/bin/wire make:migration create_editor_role --type=create-role --role=editor --label="Content Editor"
 
 # Install a module
-php vendor/bin/wire make:migration install_seo_module --type=install-module --module=SeoMaestro
+php vendor/bin/wire make:migration install_redirects_module --type=install-module --module=ProcessRedirects
 ```
 
 **Stub types:**
@@ -783,7 +801,7 @@ php vendor/bin/wire make:migration install_seo_module --type=install-module --mo
 | `create-field` | Field creation | `new Field()` + save | delete field |
 | `create-template` | Template + fieldgroup + file | Full scaffold | delete template + file |
 | `attach-field` | Field-to-template attachment | fieldgroup add | fieldgroup remove |
-| `create-page` | Page creation | `new Page()` + save | delete page |
+| `create-page` | Page creation | `$pages->newPage()` + save | delete page |
 | `create-role` | Role + permission grants | roles add + grant | delete role |
 | `install-module` | Module install | `modules->install()` | uninstall |
 
@@ -828,24 +846,6 @@ All stubs include **precondition guards** in `down()` that throw clear errors in
 | `create-page` | Page has children? | `"Cannot delete — remove children first"` |
 | `create-role` | Users assigned this role? | `"Cannot delete — remove from users first"` |
 | `install-module` | Other modules depend on it? | `"Cannot uninstall — dependencies exist"` |
-
-### make:queue
-
-Generate a new file-based Queue class in ProcessWire Console.
-
-```bash
-php vendor/bin/wire make:queue SendEmailQueue
-
-# Save directly to a specific module instead of the global site/queue directory
-php vendor/bin/wire make:queue CompileImagesQueue --module=FieldtypeAiAssistant
-```
-
-**Options:**
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `name` | | Class name ending with Queue (required) |
-| `--module` | `-m` | Placed inside site/modules/YourModule/queue/ |
 
 > **Design philosophy:** Stubs never auto-delete user content or cascade-remove dependencies. They fail loudly so you can write the correct cleanup migration yourself.
 
@@ -984,20 +984,11 @@ Explicitly create the `wire_migrations` tracking table (auto-created by `migrate
 php vendor/bin/wire migrate:install
 ```
 
-### Version
-
-Show the active version of ProcessWire, processwire-console, and associated ecosystem packages like processwire-boost.
-
-```bash
-php vendor/bin/wire version
-php vendor/bin/wire -V
-```
-
 ---
 
 ### Queues
 
-ProcessWire Console offers a lightweight, file-based Queue Management System that automatically discovers `*Queue.php` classes.
+ProcessWire Console offers a lightweight, database-backed Queue Management System that automatically discovers `*Queue.php` classes.
 
 #### `queue:table`
 
@@ -1009,26 +1000,31 @@ php vendor/bin/wire queue:table
 
 #### `queue:work`
 
-Start the queue worker daemon to process background jobs continually.
+Start the queue worker daemon to process background jobs continually (or process a single job with `--once`).
 
 ```bash
 php vendor/bin/wire queue:work --queue=default --sleep=3 --tries=3
+php vendor/bin/wire queue:work --once --json
 ```
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `--queue` | Name of the queue. Default: `default` |
-| `--sleep` | Seconds to wait before polling again if empty. Default: `3` |
-| `--tries` | Attempts before a job fails. Default: `3` |
+| `--queue` | Name of the queue (default: `default`) |
+| `--sleep` | Seconds to wait before polling again when empty (default: `3`) |
+| `--tries` | Attempts before moving a job to `failed_jobs` (default: `3`) |
+| `--memory` | Worker memory limit in megabytes before graceful exit (default: `128`) |
+| `--once` | Process only the next available job and exit |
+| `--json` | Output as JSON |
 
 #### `queue:failed`
 
 List recent failed jobs cleanly in a table.
 
 ```bash
-php vendor/bin/wire queue:failed
+php vendor/bin/wire queue:failed --limit=50
+php vendor/bin/wire queue:failed --json
 ```
 
 #### `queue:retry`
@@ -1094,7 +1090,7 @@ Our intelligent `FeatureDiscoverer` auto-magically locates all Pest tests placed
 
 #### `make:test`
 
-Generate a new Pest test stub.
+Generate a new Pest PHP test or Playwright E2E spec stub.
 
 ```bash
 # Create a Feature test in site/tests/Feature/
@@ -1103,8 +1099,14 @@ php vendor/bin/wire make:test UserLoginTest
 # Create a Unit test in site/tests/Unit/
 php vendor/bin/wire make:test DataSyncTest --unit
 
-# Create a test inside a specific module's tests/ directory
-php vendor/bin/wire make:test AiOrchestration --module=FieldtypeAiAssistant
+# Create a Pest test inside a specific module's tests/ directory
+php vendor/bin/wire make:test SyncService --module=ProcessAnalytics
+
+# Create a Playwright E2E spec in site/tests/e2e/workspace-flow.spec.ts
+php vendor/bin/wire make:test WorkspaceFlow --e2e
+
+# Create a Playwright E2E spec inside a module -> site/modules/Blog/tests/e2e/entries-flow.spec.ts
+php vendor/bin/wire make:test EntriesFlow --e2e --module=Blog
 ```
 
 #### `test`
@@ -1117,6 +1119,26 @@ php vendor/bin/wire test
 
 # Run tests and filter for "Login"
 php vendor/bin/wire test --filter=Login
+```
+
+#### `test:e2e`
+
+Run optional **Playwright** end-to-end browser and WCAG 2.1 AA accessibility suites across `/site/tests/e2e/`, `/site/templates/tests/e2e/`, and **active** `/site/modules/<Module>/tests/e2e/` directories.
+
+> **Tip:** On first run (or via `--init`), `test:e2e` can interactively install `@playwright/test` + `@axe-core/playwright` and scaffold `playwright.config.ts` alongside `tests/e2e/{global-setup,global-teardown,helpers}.ts` with ephemeral ProcessWire superuser authentication.
+
+```bash
+# Scaffold Playwright config and ProcessWire E2E helpers without running tests
+php vendor/bin/wire test:e2e --init
+
+# Run E2E specs across site and all installed ProcessWire modules
+php vendor/bin/wire test:e2e
+
+# Run E2E specs only for a specific installed module
+php vendor/bin/wire test:e2e --module=ProcessAnalytics
+
+# Forward native Playwright flags (--headed, --ui, --grep, --project, etc.)
+php vendor/bin/wire test:e2e --module=Blog --grep="Workspace"
 ```
 
 ---
@@ -1158,13 +1180,16 @@ Easily put your application into a maintenance or disabled state.
 
 #### `down`
 
-Put the application into maintenance mode.
+Put the application into maintenance mode (`site/down.json`).
 
 ```bash
 # Basic down
 php vendor/bin/wire down
 
-# With a bypass secret to allow developers to access via ?secret=dev123
+# Retry-After seconds and custom HTTP status
+php vendor/bin/wire down --retry=300 --status=503
+
+# With a bypass secret (?secret=dev123)
 php vendor/bin/wire down --secret=dev123
 
 # Redirect visitors to another URL
@@ -1183,10 +1208,14 @@ php vendor/bin/wire up
 
 ### Tinker (REPL)
 
-An interactive ProcessWire PHP REPL for quick testing and debugging.
+An interactive ProcessWire PHP REPL (or one-shot expression evaluator) for quick testing and debugging.
 
 ```bash
+# Interactive REPL
 php vendor/bin/wire tinker
+
+# Evaluate a single PHP expression and return JSON
+php vendor/bin/wire tinker '$pages->count("template=basic-page")' --json
 ```
 
 ```
@@ -1200,6 +1229,18 @@ admin
 ```
 
 > **Security:** Set `PW_CLI_DISABLE_TINKER=1` in production environments to disable this command.
+
+---
+
+### Version
+
+Show the active version of PHP, ProcessWire, `trk/processwire-console`, and installed companion packages such as `trk/processwire-boost`.
+
+```bash
+php vendor/bin/wire version
+php vendor/bin/wire version --json
+php vendor/bin/wire -V
+```
 
 ---
 
@@ -1249,7 +1290,7 @@ echo "Backup saved to: $BACKUP"
 
 ## Interactive Mode
 
-Commands that create or modify data support interactive prompts powered by [Laravel Prompts](https://github.com/laravel/prompts):
+Commands that create or modify data support interactive prompts powered by [`laravel/prompts`](https://github.com/laravel/prompts):
 
 - **`page:create -i`** — Select template from a list, enter parent path, fill template fields interactively
 - **`user:create`** — Prompts for username, email, password (with confirmation), and role selection
@@ -1279,27 +1320,43 @@ They are automatically discovered and loaded on every CLI invocation.
 
 ```php
 <?php
+
+declare(strict_types=1);
+
 // site/commands/SyncProductsCommand.php
+
+namespace Site\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
-use Symfony\Component\Console\Style\SymfonyStyle;
+use Totoglu\Console\Traits\InteractWithProcessWire;
+use function Laravel\Prompts\info;
+use function ProcessWire\wire;
 
-class SyncProductsCommand extends Command
+final class SyncProductsCommand extends Command
 {
+	use InteractWithProcessWire;
+
 	protected function configure(): void
 	{
 		$this
 			->setName('products:sync')
-			->setDescription('Synchronize products from external API.');
+			->setDescription('Synchronize products from external API.')
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$io = new SymfonyStyle($input, $output);
-		// Your logic here — $pages, $modules etc. are available via wire()
-		$io->success('Products synchronized.');
+		$asJson = (bool) $input->getOption('json');
+		$count = wire('pages')->count('template=basic-page');
+
+		if ($asJson) {
+			return $this->outputJsonSuccess($output, ['synced' => $count]);
+		}
+
+		info("Synchronized {$count} items.");
 		return Command::SUCCESS;
 	}
 }
@@ -1336,7 +1393,7 @@ The console engine reads `vendor/composer/installed.json` **and** root `composer
 
 ### Path Traversal Protection
 
-Log commands (`log:tail`, `log:read`, `log:clear`) sanitize the log `name` argument with `basename()` to prevent directory traversal attacks.
+Log commands (`log:tail`, `log:read`, `log:clear`) reject path separators (`/`, `\`) and `..` traversal sequences (`INVALID_NAME`) and refuse to follow symbolic links.
 
 ### Tinker Guard
 
@@ -1373,7 +1430,7 @@ processwire-console/
 ├── bin/
 │   └── wire                    # CLI entry point (bootstrap + command registration)
 ├── src/
-│   ├── Commands/               # 74 command classes
+│   ├── Commands/               # 75 command classes
 │   │   ├── Page*.php           # 9 page management commands
 │   │   ├── Field*.php          # 7 field management commands
 │   │   ├── Template*.php       # 6 template management commands
@@ -1390,7 +1447,7 @@ processwire-console/
 │   │   ├── Make*.php           # 6 scaffolding commands
 │   │   ├── ScheduleRunCommand.php
 │   │   ├── DownCommand.php / UpCommand.php
-│   │   ├── TestCommand.php
+│   │   ├── TestCommand.php / TestE2eCommand.php
 │   │   ├── VersionCommand.php
 │   │   └── TinkerCommand.php   # Interactive REPL
 │   ├── Database/               # Base Seeder contract
@@ -1406,6 +1463,11 @@ processwire-console/
 │       ├── inputfield.stub
 │       ├── process.stub
 │       ├── pest.stub
+│       ├── playwright.config.stub
+│       ├── playwright.global-setup.stub
+│       ├── playwright.global-teardown.stub
+│       ├── playwright.helpers.stub
+│       ├── playwright.spec.stub
 │       ├── queue.stub
 │       ├── seeder.stub
 │       ├── task.stub
@@ -1424,7 +1486,7 @@ processwire-console/
 1. Locate Composer autoloader (supports standard and symlinked setups)
 2. Walk upward to find `wire/core/ProcessWire.php`
 3. Boot ProcessWire with database config (graceful fallback if unavailable)
-4. Register 74 built-in commands
+4. Register 75 built-in commands
 5. Auto-discover custom commands dynamically from:
    - Site profile: `site/commands/`
    - Installed modules: `site/modules/*/commands/`
@@ -1435,7 +1497,7 @@ processwire-console/
 
 - **Null-safe:** All ProcessWire API `->get()` calls are guarded against `null` returns
 - **Strict typing:** `declare(strict_types=1)` in every file
-- **Consistent I/O:** All commands use Laravel Prompts and standard JSON envelopes (`{"ok":true|false,...}`)
+- **Consistent I/O:** All commands use `laravel/prompts` and standard JSON envelopes (`{"ok":true|false,...}`)
 - **Dual output:** Human-readable tables + machine-readable JSON on every command
 - **Non-destructive defaults:** Confirmations on mutations, `--dry-run` for previews
 
@@ -1447,8 +1509,9 @@ processwire-console/
 |-----------|---------|
 | PHP | ≥ 8.3 |
 | ProcessWire | 3.x |
-| `symfony/console` | ^7.0 |
-| `laravel/prompts` | ^0.3.13 |
+| `symfony/console` | ^7.0 \|\| ^8.0 |
+| `laravel/prompts` | ^0.3 |
+| `dragonmantank/cron-expression` | ^3.6 |
 
 ---
 

@@ -1,0 +1,15 @@
+parameters:
+	phpVersion: 80300
+	level: 8
+	treatPhpDocTypesAsCertain: false
+	reportUnmatchedIgnoredErrors: false
+	paths:
+		- src
+		- bin/wire
+	tmpDir: .phpstan.cache
+	ignoreErrors:
+		- '#Function ProcessWire\\wire not found#'
+		- '#Instantiated class ProcessWire\\[A-Za-z0-9_\\]+ not found#'
+		- '#has invalid (return )?type ProcessWire\\[A-Za-z0-9_\\]+#'
+		- '#on an unknown class ProcessWire\\[A-Za-z0-9_\\]+#'
+		- '#Class ProcessWire\\[A-Za-z0-9_\\]+ not found#'

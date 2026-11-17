@@ -4,14 +4,38 @@
   "version": "0.2.0",
   "type": "library",
   "license": "MIT",
+  "keywords": [
+    "processwire",
+    "cli",
+    "console",
+    "migrations",
+    "queue",
+    "scheduler",
+    "testing",
+    "playwright",
+    "pest"
+  ],
+  "homepage": "https://github.com/trk/processwire-console",
+  "authors": [
+    {
+      "name": "Iskender Totoglu",
+      "homepage": "https://github.com/trk"
+    }
+  ],
+  "support": {
+    "issues": "https://github.com/trk/processwire-console/issues",
+    "source": "https://github.com/trk/processwire-console"
+  },
   "require": {
     "php": ">=8.3",
+    "ext-json": "*",
+    "ext-pdo": "*",
     "laravel/prompts": "^0.3",
     "symfony/console": "^7.0 || ^8.0",
     "dragonmantank/cron-expression": "^3.6"
   },
   "suggest": {
-    "fakerphp/faker": "Ideal for generating dummy data in database seeders."
+    "fakerphp/faker": "Generate realistic sample data in database seeders."
   },
   "autoload": {
     "psr-4": {
@@ -24,17 +48,14 @@
     }
   },
   "require-dev": {
-    "phpunit/phpunit": "^11.0 || ^12.0"
+    "phpstan/phpstan": "^2.0",
+    "phpunit/phpunit": "^11.0 || ^12.0 || ^13.0"
   },
   "bin": [
     "bin/wire"
   ],
   "scripts": {
-    "post-install-cmd": [
-      "php -r \"if (!file_exists('./wire')) { symlink('vendor/bin/wire', './wire'); echo 'Linked wire executable to project root.\\n'; } else { echo 'wire executable already exists in project root.\\n'; }\""
-    ],
-    "post-update-cmd": [
-      "@post-install-cmd"
-    ]
+    "test": "phpunit",
+    "analyse": "phpstan analyse --memory-limit=1G"
   }
 }
