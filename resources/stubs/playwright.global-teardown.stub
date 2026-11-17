@@ -19,8 +19,8 @@ export default async function globalTeardown(): Promise<void> {
 		try {
 			const phpCleanup = `
 				$_SERVER['HTTP_HOST'] ??= 'localhost';
-				require_once 'wire/core/ProcessWire.php';
-				$wire = new \\ProcessWire\\ProcessWire(\\ProcessWire\\ProcessWire::buildConfig(getcwd()));
+				$_SERVER['SCRIPT_NAME'] = '/index.php';
+				require_once 'index.php';
 				$username = ${JSON.stringify(username)};
 				try {
 					$stmt = $wire->database->prepare("DELETE FROM session_login_throttle WHERE name = :u");

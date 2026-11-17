@@ -30,8 +30,8 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
 
 	const phpBootstrap = `
 		$_SERVER['HTTP_HOST'] ??= 'localhost';
-		require_once 'wire/core/ProcessWire.php';
-		$wire = new \\ProcessWire\\ProcessWire(\\ProcessWire\\ProcessWire::buildConfig(getcwd()));
+		$_SERVER['SCRIPT_NAME'] = '/index.php';
+		require_once 'index.php';
 		$users = $wire->users;
 		$db = $wire->database;
 		$username = ${JSON.stringify(username)};

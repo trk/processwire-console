@@ -23,10 +23,32 @@ export function getAdminUrl(subpath = ''): string {
 }
 
 /**
+ * Resolve the active ephemeral E2E superuser username provisioned by globalSetup (if present).
+ */
+export function getE2EUsername(): string {
+	const candidatePath = fs.existsSync(getMetaStatePath()) ? getMetaStatePath() : META_STATE_PATH;
+	if (fs.existsSync(candidatePath)) {
+		try {
+			const meta = JSON.parse(fs.readFileSync(candidatePath, 'utf8')) as { username?: string };
+			if (meta.username) {
+				return meta.username;
+			}
+		} catch {
+			// Ignore malformed meta state
+		}
+	}
+	return '';
+}
+
+/**
  * Execute an inline PHP snippet inside the booted ProcessWire runtime and parse its trailing JSON output.
  */
 export function runWirePhp<T = unknown>(phpBody: string): T {
-	const script = `$_SERVER['HTTP_HOST'] ??= 'localhost';\nrequire_once 'wire/core/ProcessWire.php';\n$wire = new \\ProcessWire\\ProcessWire(\\ProcessWire\\ProcessWire::buildConfig(getcwd()));\n${phpBody}`;
+	const activeUser = getE2EUsername();
+	const setCurrentUserPhp = activeUser
+		? `$__e2eUser = $wire->users->get(${JSON.stringify(activeUser)}); if ($__e2eUser && $__e2eUser->id) { $wire->users->setCurrentUser($__e2eUser); }\n`
+		: '';
+	const script = `$_SERVER['HTTP_HOST'] ??= 'localhost';\n$_SERVER['SCRIPT_NAME'] = '/index.php';\nrequire_once 'index.php';\n${setCurrentUserPhp}${phpBody}`;
 	const raw = execFileSync('php', ['-r', script], {
 		cwd: process.cwd(),
 		encoding: 'utf8',
