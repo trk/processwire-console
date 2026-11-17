@@ -1,0 +1,43 @@
+import { defineConfig, devices } from '@playwright/test';
+import fs from 'node:fs';
+
+const useSystemChrome = fs.existsSync('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+const rawRunId = (process.env.PW_E2E_RUN_ID ||= `${process.pid}_${Date.now().toString(36)}`);
+const runId = rawRunId.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+export default defineConfig({
+	testDir: '.',
+	outputDir: `./test-results/run-${runId}`,
+	testMatch: [
+		'tests/e2e/**/*.spec.ts',
+		'site/tests/e2e/**/*.spec.ts',
+		'site/templates/tests/e2e/**/*.spec.ts',
+		'site/modules/*/tests/e2e/**/*.spec.ts',
+	],
+	timeout: 30_000,
+	expect: {
+		timeout: 10_000,
+	},
+	fullyParallel: false,
+	workers: 1,
+	retries: 0,
+	reporter: [['list']],
+	globalSetup: './tests/e2e/global-setup.ts',
+	globalTeardown: './tests/e2e/global-teardown.ts',
+	use: {
+		baseURL: process.env.PW_BASE_URL || '{{baseUrl}}',
+		ignoreHTTPSErrors: true,
+		storageState: `./tests/e2e/.auth/admin-${runId}.json`,
+		trace: 'retain-on-failure',
+		screenshot: 'only-on-failure',
+	},
+	projects: [
+		{
+			name: 'chromium',
+			use: {
+				...devices['Desktop Chrome'],
+				...(useSystemChrome ? { channel: 'chrome' } : {}),
+			},
+		},
+	],
+});

@@ -1,0 +1,118 @@
+import { chromium, devices, expect, type FullConfig } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+export function getE2ERunId(): string {
+	return (process.env.PW_E2E_RUN_ID ||= 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+export function getAuthStatePath(): string {
+	const runId = getE2ERunId();
+	return path.resolve(process.cwd(), `tests/e2e/.auth/admin-${runId}.json`);
+}
+
+export function getMetaStatePath(): string {
+	const runId = getE2ERunId();
+	return path.resolve(process.cwd(), `tests/e2e/.auth/meta-${runId}.json`);
+}
+
+export const AUTH_STATE_PATH = path.resolve(process.cwd(), 'tests/e2e/.auth/admin.json');
+export const META_STATE_PATH = path.resolve(process.cwd(), 'tests/e2e/.auth/meta.json');
+
+export default async function globalSetup(config: FullConfig): Promise<void> {
+	const authStatePath = getAuthStatePath();
+	const metaStatePath = getMetaStatePath();
+	const runId = getE2ERunId();
+	fs.mkdirSync(path.dirname(authStatePath), { recursive: true });
+
+	const username = `pw_e2e_${runId}`.toLowerCase().slice(0, 48);
+
+	const phpBootstrap = `
+		$_SERVER['HTTP_HOST'] ??= 'localhost';
+		require_once 'wire/core/ProcessWire.php';
+		$wire = new \\ProcessWire\\ProcessWire(\\ProcessWire\\ProcessWire::buildConfig(getcwd()));
+		$users = $wire->users;
+		$db = $wire->database;
+		$username = ${JSON.stringify(username)};
+		$password = 'PwE2e_' . bin2hex(random_bytes(12)) . '!9aA';
+		try {
+			$stmt = $db->prepare("DELETE FROM session_login_throttle WHERE name IN (:u, '127.0.0.1', '::1')");
+			$stmt->execute([':u' => $username]);
+		} catch (\\Throwable $e) {
+			// Ignore when login throttle table is absent
+		}
+		$existing = $users->get($username);
+		if ($existing && $existing->id) {
+			$users->delete($existing);
+		}
+		$u = $users->add($username);
+		$u->of(false);
+		$u->pass = $password;
+		$u->addRole('superuser');
+		$users->save($u);
+		$hosts = is_array($wire->config->httpHosts) ? array_values($wire->config->httpHosts) : [];
+		$primaryHost = $hosts[0] ?? $wire->config->httpHost;
+		echo json_encode([
+			'adminUrl' => $wire->config->urls->admin,
+			'httpHost' => $primaryHost,
+			'https' => (bool) $wire->config->https,
+			'username' => $username,
+			'password' => $password,
+		], JSON_UNESCAPED_SLASHES);
+	`;
+
+	const raw = execFileSync('php', ['-r', phpBootstrap], {
+		cwd: process.cwd(),
+		encoding: 'utf8',
+	}).trim();
+
+	const lines = raw.split('\n').filter((line) => line.trim() !== '');
+	const meta = JSON.parse(lines[lines.length - 1] || '{}') as {
+		adminUrl: string;
+		httpHost: string;
+		https?: boolean;
+		username: string;
+		password: string;
+	};
+
+	const isLocalPlainHttp =
+		!meta.https &&
+		(meta.httpHost === 'localhost' ||
+			meta.httpHost === '127.0.0.1' ||
+			meta.httpHost.startsWith('localhost:') ||
+			meta.httpHost.startsWith('127.0.0.1:'));
+	const defaultScheme = isLocalPlainHttp ? 'http' : 'https';
+	const baseURL =
+		process.env.PW_BASE_URL ||
+		(config.projects[0]?.use?.baseURL as string | undefined) ||
+		`${defaultScheme}://${meta.httpHost}`;
+
+	fs.writeFileSync(
+		metaStatePath,
+		JSON.stringify({ baseURL, adminUrl: meta.adminUrl, username: meta.username }, null, 2),
+		'utf8'
+	);
+
+	const useSystemChrome = fs.existsSync('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+	const browser = await chromium.launch(useSystemChrome ? { channel: 'chrome' } : undefined);
+	const context = await browser.newContext({
+		...devices['Desktop Chrome'],
+		baseURL,
+		ignoreHTTPSErrors: true,
+	});
+	const page = await context.newPage();
+
+	await page.goto(meta.adminUrl, { waitUntil: 'networkidle' });
+	await page.locator('#login_name').fill(meta.username);
+	await page.locator('#login_pass').fill(meta.password);
+	await Promise.all([
+		page.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+		page.locator('#Inputfield_login_submit').click(),
+	]);
+
+	await expect(page.locator('#login_name')).toHaveCount(0);
+
+	await context.storageState({ path: authStatePath });
+	await browser.close();
+}

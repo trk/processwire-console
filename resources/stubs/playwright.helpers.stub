@@ -1,0 +1,135 @@
+import type { Page } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import { getMetaStatePath, META_STATE_PATH } from './global-setup';
+
+export function getAdminUrl(subpath = ''): string {
+	let adminUrl = process.env.PW_ADMIN_URL || '{{adminUrl}}';
+	const candidatePath = fs.existsSync(getMetaStatePath()) ? getMetaStatePath() : META_STATE_PATH;
+	if (fs.existsSync(candidatePath)) {
+		try {
+			const meta = JSON.parse(fs.readFileSync(candidatePath, 'utf8')) as { adminUrl?: string };
+			if (meta.adminUrl) {
+				adminUrl = meta.adminUrl;
+			}
+		} catch {
+			// Fallback to configured admin URL
+		}
+	}
+	const cleanBase = adminUrl.endsWith('/') ? adminUrl : `${adminUrl}/`;
+	const cleanSub = subpath.replace(/^\/+/, '');
+	return `${cleanBase}${cleanSub}`;
+}
+
+/**
+ * Execute an inline PHP snippet inside the booted ProcessWire runtime and parse its trailing JSON output.
+ */
+export function runWirePhp<T = unknown>(phpBody: string): T {
+	const script = `$_SERVER['HTTP_HOST'] ??= 'localhost';\nrequire_once 'wire/core/ProcessWire.php';\n$wire = new \\ProcessWire\\ProcessWire(\\ProcessWire\\ProcessWire::buildConfig(getcwd()));\n${phpBody}`;
+	const raw = execFileSync('php', ['-r', script], {
+		cwd: process.cwd(),
+		encoding: 'utf8',
+	}).trim();
+
+	const lines = raw.split('\n').filter((line) => line.trim() !== '');
+	return JSON.parse(lines[lines.length - 1] || 'null') as T;
+}
+
+/**
+ * Provision a dedicated ephemeral ProcessWire superuser for isolated multi-session E2E specs.
+ */
+export function createIsolatedSuperuser(prefix = 'pw_e2e_iso'): {
+	username: string;
+	password: string;
+	adminUrl: string;
+	httpHost: string;
+} {
+	const safePrefix = prefix.replace(/[^a-zA-Z0-9_-]/g, '_') || 'pw_e2e_iso';
+	const username = `${safePrefix}_${crypto.randomBytes(4).toString('hex')}`.toLowerCase().slice(0, 48);
+	const password = `PwIso_${crypto.randomBytes(10).toString('hex')}!9aA`;
+
+	return runWirePhp<{ username: string; password: string; adminUrl: string; httpHost: string }>(`
+		$username = ${JSON.stringify(username)};
+		$password = ${JSON.stringify(password)};
+		try {
+			$stmt = $wire->database->prepare("DELETE FROM session_login_throttle WHERE name IN (:u, '127.0.0.1', '::1')");
+			$stmt->execute([':u' => $username]);
+		} catch (\\Throwable $e) {}
+		$existing = $wire->users->get($username);
+		if ($existing && $existing->id) {
+			$wire->users->delete($existing);
+		}
+		$u = $wire->users->add($username);
+		$u->of(false);
+		$u->pass = $password;
+		$u->addRole('superuser');
+		$wire->users->save($u);
+		$hosts = is_array($wire->config->httpHosts) ? array_values($wire->config->httpHosts) : [];
+		echo json_encode([
+			'username' => $username,
+			'password' => $password,
+			'adminUrl' => $wire->config->urls->admin,
+			'httpHost' => $hosts[0] ?? $wire->config->httpHost,
+		], JSON_UNESCAPED_SLASHES);
+	`);
+}
+
+/**
+ * Delete an isolated ProcessWire user created during E2E test execution.
+ */
+export function deleteIsolatedUser(username: string): void {
+	if (!username) {
+		return;
+	}
+	try {
+		runWirePhp(`
+			$username = ${JSON.stringify(username)};
+			try {
+				$stmt = $wire->database->prepare("DELETE FROM session_login_throttle WHERE name = :u");
+				$stmt->execute([':u' => $username]);
+			} catch (\\Throwable $e) {}
+			$u = $wire->users->get($username);
+			if ($u && $u->id) {
+				$wire->users->delete($u);
+			}
+			echo 'true';
+		`);
+	} catch {
+		// Ignore cleanup errors
+	}
+}
+
+/**
+ * Collect uncaught page errors and console errors during a Playwright test.
+ */
+export function attachRuntimeErrorTracker(page: Page): {
+	errors: string[];
+	assertNoErrors: () => void;
+} {
+	const errors: string[] = [];
+
+	page.on('pageerror', (err) => {
+		errors.push(`PageError: ${err.message}`);
+	});
+
+	page.on('console', (msg) => {
+		if (msg.type() === 'error') {
+			const text = msg.text();
+			const url = msg.location()?.url || '';
+			if (text.includes('favicon.ico') || url.includes('favicon.ico')) {
+				return;
+			}
+			errors.push(`ConsoleError: ${text}${url ? ` [${url}]` : ''}`);
+		}
+	});
+
+	return {
+		errors,
+		assertNoErrors: () => {
+			if (errors.length > 0) {
+				throw new Error(`Unexpected browser runtime errors:\n${errors.join('\n')}`);
+			}
+		},
+	};
+}

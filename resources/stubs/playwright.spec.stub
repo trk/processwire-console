@@ -1,0 +1,19 @@
+import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { attachRuntimeErrorTracker, getAdminUrl } from '{{helpersImportPath}}';
+
+test.describe('{{title}}', () => {
+	test('renders without runtime or accessibility errors', async ({ page }) => {
+		const tracker = attachRuntimeErrorTracker(page);
+
+		await page.goto(getAdminUrl());
+		await expect(page.locator('body')).toBeVisible();
+
+		const axe = await new AxeBuilder({ page })
+			.withTags(['wcag2a', 'wcag2aa'])
+			.analyze();
+		expect(axe.violations).toEqual([]);
+
+		tracker.assertNoErrors();
+	});
+});

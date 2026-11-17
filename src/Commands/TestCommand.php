@@ -15,6 +15,36 @@ final class TestCommand extends Command
 {
 	use InteractWithProcessWire;
 
+	/** @var list<string> */
+	private const PEST_VALUE_FLAGS = [
+		'-c',
+		'--configuration',
+		'--bootstrap',
+		'--cache-directory',
+		'--filter',
+		'--testsuite',
+		'--group',
+		'--exclude-group',
+		'--covers',
+		'--uses',
+		'--process-isolation',
+		'--order-by',
+		'--random-order-seed',
+		'--log-junit',
+		'--log-teamcity',
+		'--testdox-html',
+		'--testdox-text',
+		'--coverage-clover',
+		'--coverage-cobertura',
+		'--coverage-crap4j',
+		'--coverage-html',
+		'--coverage-php',
+		'--coverage-text',
+		'--coverage-xml',
+		'--processes',
+		'--shard',
+	];
+
 	protected function configure(): void
 	{
 		$this
@@ -26,14 +56,14 @@ final class TestCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$asJson = (bool) $input->getOption('json');
+		$asJson = (bool) $input->getOption('json') || in_array('--json', $_SERVER['argv'] ?? [], true);
 		$config = \ProcessWire\wire('config');
 		$projectRoot = dirname(rtrim($config->paths->site, '/'));
 		$pestBinary = $projectRoot . '/vendor/bin/pest';
 
 		if (!file_exists($pestBinary)) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'PEST_NOT_FOUND', 'Pest binary not found at vendor/bin/pest.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'PEST_NOT_FOUND', 'Pest binary not found at vendor/bin/pest.');
 			}
 
 			$install = \Laravel\Prompts\confirm(
@@ -52,7 +82,7 @@ final class TestCommand extends Command
 				}
 
 				if (!is_dir($projectRoot . '/tests')) {
-					mkdir($projectRoot . '/tests');
+					mkdir($projectRoot . '/tests', 0755, true);
 				}
 
 				// Init Pest
@@ -60,11 +90,13 @@ final class TestCommand extends Command
 
 				// Inject ProcessWire Bootstrap to Pest.php if it exists
 				$pestConfigFile = $projectRoot . '/tests/Pest.php';
-				$bootstrapCode = "\n/*\n|--------------------------------------------------------------------------\n| ProcessWire Bootstrap\n|--------------------------------------------------------------------------\n|\n| Boot processwire to make `wire()` and \$pages available in all tests.\n|\n*/\nif (!class_exists('\\\\ProcessWire\\\\ProcessWire')) {\n\trequire_once dirname(__DIR__) . '/index.php';\n}\n";
-				$pestConfigContent = file_get_contents($pestConfigFile);
-				if ($pestConfigContent !== false && !str_contains($pestConfigContent, 'class_exists(\'\\ProcessWire')) {
-					file_put_contents($pestConfigFile, $pestConfigContent . $bootstrapCode);
-					\Laravel\Prompts\note('processwire-console automatically injected ProcessWire bootstrap into tests/Pest.php');
+				if (is_file($pestConfigFile)) {
+					$bootstrapCode = "\n/*\n|--------------------------------------------------------------------------\n| ProcessWire Bootstrap\n|--------------------------------------------------------------------------\n|\n| Boot ProcessWire in CLI mode so `wire()` and API variables are available.\n|\n*/\nif (!class_exists('\\\\ProcessWire\\\\ProcessWire')) {\n\t\$_SERVER['HTTP_HOST'] ??= 'localhost';\n\trequire_once dirname(__DIR__) . '/wire/core/ProcessWire.php';\n\tnew \\ProcessWire\\ProcessWire(\\ProcessWire\\ProcessWire::buildConfig(dirname(__DIR__)));\n}\n";
+					$pestConfigContent = file_get_contents($pestConfigFile);
+					if ($pestConfigContent !== false && !str_contains($pestConfigContent, 'ProcessWire::buildConfig') && !str_contains($pestConfigContent, 'class_exists(\'\\ProcessWire')) {
+						file_put_contents($pestConfigFile, $pestConfigContent . $bootstrapCode);
+						\Laravel\Prompts\note('processwire-console automatically injected ProcessWire bootstrap into tests/Pest.php');
+					}
 				}
 			} else {
 				return Command::SUCCESS;
@@ -85,32 +117,12 @@ final class TestCommand extends Command
 			$executionPaths[] = $mPath;
 		}
 
-		$argv = $_SERVER['argv'] ?? [];
-		$forwardArgs = [];
-		$foundTest = false;
-
-		foreach ($argv as $arg) {
-			if ($foundTest) {
-				if ($arg === '--json') {
-					continue;
-				}
-				$forwardArgs[] = $arg;
-			} elseif ($arg === 'test') {
-				$foundTest = true;
-			}
-		}
-
-		$hasPathArg = false;
-		foreach ($forwardArgs as $arg) {
-			if (!str_starts_with($arg, '-')) {
-				$hasPathArg = true;
-				break;
-			}
-		}
+		$forwardArgs = self::extractForwardArgs($_SERVER['argv'] ?? []);
+		$hasPathArg = self::hasExplicitPathFilter($forwardArgs);
 
 		$commandParts = [escapeshellarg($pestBinary)];
 
-		if (!$hasPathArg && !empty($executionPaths)) {
+		if (!$hasPathArg && $executionPaths !== []) {
 			foreach ($executionPaths as $path) {
 				$relativePath = str_replace($projectRoot . '/', '', $path);
 				$commandParts[] = escapeshellarg($relativePath);
@@ -126,24 +138,88 @@ final class TestCommand extends Command
 		$currentDir = getcwd() ?: $projectRoot;
 		chdir($projectRoot);
 
-		if ($asJson) {
-			$lines = [];
-			exec($commandStr . ' 2>&1', $lines, $exitCode);
-			chdir($currentDir);
-			$payload = [
-				'command' => $commandStr,
-				'exitCode' => $exitCode,
-				'output' => implode("\n", $lines),
-			];
-			if ($exitCode !== 0) {
-				return $this->outputJsonError($output, 'TESTS_FAILED', implode("\n", $lines));
+		try {
+			if ($asJson) {
+				$lines = [];
+				exec($commandStr . ' 2>&1', $lines, $exitCode);
+				$payload = [
+					'command' => $commandStr,
+					'exitCode' => $exitCode,
+					'output' => implode("\n", $lines),
+				];
+				if ($exitCode !== 0) {
+					return $this->outputJsonError($output, 'TESTS_FAILED', implode("\n", $lines));
+				}
+				return $this->outputJsonSuccess($output, $payload);
 			}
-			return $this->outputJsonSuccess($output, $payload);
+
+			passthru($commandStr, $exitCode);
+
+			return $exitCode;
+		} finally {
+			chdir($currentDir);
+		}
+	}
+
+	/**
+	 * Extract Pest/PHPUnit-native CLI arguments from raw argv while stripping console-only flags.
+	 *
+	 * @param array<int, mixed> $argv
+	 * @return list<string>
+	 */
+	public static function extractForwardArgs(array $argv): array
+	{
+		$forwardArgs = [];
+		$foundTest = false;
+
+		foreach ($argv as $rawArg) {
+			$arg = (string) $rawArg;
+			if (!$foundTest) {
+				if ($arg === 'test') {
+					$foundTest = true;
+				}
+				continue;
+			}
+
+			if (in_array($arg, ['--json', '--no-interaction', '-n', '--ansi', '--no-ansi', '-q', '--quiet'], true)) {
+				continue;
+			}
+
+			$forwardArgs[] = $arg;
 		}
 
-		passthru($commandStr, $exitCode);
-		chdir($currentDir);
+		return $forwardArgs;
+	}
 
-		return $exitCode;
+	/**
+	 * Check whether forwarded Pest arguments include an explicit positional path/file target.
+	 *
+	 * @param list<string> $forwardArgs
+	 */
+	public static function hasExplicitPathFilter(array $forwardArgs): bool
+	{
+		$skipNext = false;
+
+		foreach ($forwardArgs as $arg) {
+			if ($skipNext) {
+				$skipNext = false;
+				continue;
+			}
+
+			if ($arg === '--') {
+				continue;
+			}
+
+			if (in_array($arg, self::PEST_VALUE_FLAGS, true)) {
+				$skipNext = true;
+				continue;
+			}
+
+			if (!str_starts_with($arg, '-')) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

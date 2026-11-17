@@ -1,0 +1,52 @@
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import { getAuthStatePath, getMetaStatePath } from './global-setup';
+
+export default async function globalTeardown(): Promise<void> {
+	const authStatePath = getAuthStatePath();
+	const metaStatePath = getMetaStatePath();
+	let username = '';
+	if (fs.existsSync(metaStatePath)) {
+		try {
+			const meta = JSON.parse(fs.readFileSync(metaStatePath, 'utf8')) as { username?: string };
+			username = meta.username || '';
+		} catch {
+			// Ignore malformed meta file
+		}
+	}
+
+	if (username) {
+		try {
+			const phpCleanup = `
+				$_SERVER['HTTP_HOST'] ??= 'localhost';
+				require_once 'wire/core/ProcessWire.php';
+				$wire = new \\ProcessWire\\ProcessWire(\\ProcessWire\\ProcessWire::buildConfig(getcwd()));
+				$username = ${JSON.stringify(username)};
+				try {
+					$stmt = $wire->database->prepare("DELETE FROM session_login_throttle WHERE name = :u");
+					$stmt->execute([':u' => $username]);
+				} catch (\\Throwable $e) {}
+				$u = $wire->users->get($username);
+				if ($u && $u->id) {
+					$wire->users->delete($u);
+				}
+			`;
+			execFileSync('php', ['-r', phpCleanup], {
+				cwd: process.cwd(),
+				encoding: 'utf8',
+			});
+		} catch {
+			// Ignore cleanup errors
+		}
+	}
+
+	for (const file of [authStatePath, metaStatePath]) {
+		if (fs.existsSync(file)) {
+			try {
+				fs.unlinkSync(file);
+			} catch {
+				// Ignore unlink race
+			}
+		}
+	}
+}
