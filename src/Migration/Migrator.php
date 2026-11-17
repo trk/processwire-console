@@ -232,13 +232,25 @@ final class Migrator
 		}
 
 		$status = [];
+		$seenOnDisk = [];
 		foreach ($all as $file) {
+			$seenOnDisk[$file] = true;
 			$batch = $appliedMap[$file] ?? null;
 			$status[] = [
 				'name' => $file,
 				'status' => $batch !== null ? 'applied' : 'pending',
 				'batch' => $batch,
 			];
+		}
+
+		foreach ($appliedMap as $appliedFile => $batch) {
+			if (!isset($seenOnDisk[$appliedFile])) {
+				$status[] = [
+					'name' => $appliedFile,
+					'status' => 'missing',
+					'batch' => $batch,
+				];
+			}
 		}
 
 		return $status;
@@ -265,6 +277,9 @@ final class Migrator
 
 		try {
 			$stmt = $this->db->query("SELECT 1 FROM `{$table}` LIMIT 1");
+			if ($stmt === false) {
+				return false;
+			}
 			$stmt->closeCursor();
 			return true;
 		} catch (\Throwable) {
@@ -286,7 +301,7 @@ final class Migrator
 		$this->ensureTable();
 		$table = $this->table;
 		$stmt = $this->db->query("SELECT `migration`, `batch` FROM `{$table}` ORDER BY `id` ASC");
-		return $stmt->fetchAll(PDO::FETCH_ASSOC);
+		return $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 	}
 
 	/**
@@ -302,9 +317,9 @@ final class Migrator
 		$this->ensureTable();
 		$table = $this->table;
 		$stmt = $this->db->query("SELECT MAX(`batch`) AS `max_batch` FROM `{$table}`");
-		$row = $stmt->fetch(PDO::FETCH_ASSOC);
+		$row = $stmt !== false ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
 
-		return (int) ($row['max_batch'] ?? 0);
+		return is_array($row) ? (int) ($row['max_batch'] ?? 0) : 0;
 	}
 
 	private function getNextBatchNumber(): int

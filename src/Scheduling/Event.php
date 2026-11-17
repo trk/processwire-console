@@ -71,10 +71,10 @@ class Event
 	 */
 	public function dailyAt(string $time): self
 	{
-		$segments = explode(':', $time);
+		$segments = explode(':', trim($time));
 
-		$hour = count($segments) > 0 ? (int) $segments[0] : 0;
-		$minute = count($segments) > 1 ? (int) $segments[1] : 0;
+		$hour = max(0, min(23, (int) $segments[0]));
+		$minute = count($segments) > 1 ? max(0, min(59, (int) $segments[1])) : 0;
 
 		return $this->cron("{$minute} {$hour} * * *");
 	}

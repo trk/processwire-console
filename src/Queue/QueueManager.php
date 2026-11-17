@@ -54,7 +54,7 @@ final class QueueManager
 				id INT UNSIGNED NOT NULL AUTO_INCREMENT,
 				queue VARCHAR(255) NOT NULL,
 				payload LONGTEXT NOT NULL,
-				attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+				attempts INT UNSIGNED NOT NULL DEFAULT 0,
 				reserved_at INT UNSIGNED DEFAULT NULL,
 				available_at INT UNSIGNED NOT NULL,
 				created_at INT UNSIGNED NOT NULL,
@@ -132,17 +132,18 @@ final class QueueManager
 
 		try {
 			$now = time();
+			$expiredReservation = $now - 900;
 			$stmt = $this->db->prepare("
 				SELECT * FROM `{$jobs}`
 				WHERE queue = :queue
-				AND reserved_at IS NULL
+				AND (reserved_at IS NULL OR reserved_at <= :expired)
 				AND available_at <= :now
 				ORDER BY id ASC
 				LIMIT 1
 				FOR UPDATE
 			");
 
-			$stmt->execute([':queue' => $queue, ':now' => $now]);
+			$stmt->execute([':queue' => $queue, ':expired' => $expiredReservation, ':now' => $now]);
 			$job = $stmt->fetch(PDO::FETCH_ASSOC);
 
 			if (!$job) {
@@ -152,11 +153,15 @@ final class QueueManager
 
 			$update = $this->db->prepare("UPDATE `{$jobs}` SET reserved_at = :now, attempts = attempts + 1 WHERE id = :id");
 			$update->execute([':now' => $now, ':id' => $job['id']]);
+			$job['attempts'] = ((int) ($job['attempts'] ?? 0)) + 1;
+			$job['reserved_at'] = $now;
 
 			$this->db->commit();
 			return $job;
-		} catch (Exception $e) {
-			$this->db->rollBack();
+		} catch (\Throwable $e) {
+			if ($this->db->inTransaction()) {
+				$this->db->rollBack();
+			}
 			throw $e;
 		}
 	}
@@ -190,17 +195,27 @@ final class QueueManager
 	public function markFailed(array $job, Throwable $e): void
 	{
 		$failed = $this->failedTable;
-		$stmt = $this->db->prepare("
-			INSERT INTO `{$failed}` (queue, payload, exception)
-			VALUES (:queue, :payload, :exception)
-		");
-		$stmt->execute([
-			':queue' => $job['queue'],
-			':payload' => $job['payload'],
-			':exception' => (string) $e,
-		]);
+		$this->db->beginTransaction();
 
-		$this->deleteJob((int) $job['id']);
+		try {
+			$stmt = $this->db->prepare("
+				INSERT INTO `{$failed}` (queue, payload, exception)
+				VALUES (:queue, :payload, :exception)
+			");
+			$stmt->execute([
+				':queue' => $job['queue'],
+				':payload' => $job['payload'],
+				':exception' => (string) $e,
+			]);
+
+			$this->deleteJob((int) $job['id']);
+			$this->db->commit();
+		} catch (Throwable $err) {
+			if ($this->db->inTransaction()) {
+				$this->db->rollBack();
+			}
+			throw $err;
+		}
 	}
 
 	/**
@@ -283,9 +298,9 @@ final class QueueManager
 		$jobs = $this->jobsTable;
 
 		$stmt = $this->db->query("SELECT * FROM `{$failed}` ORDER BY id ASC");
-		$rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		$rows = $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
-		if (empty($rows)) {
+		if ($rows === []) {
 			return 0;
 		}
 
@@ -340,25 +355,33 @@ final class QueueManager
 	 */
 	public function resolveClass(string $className): Queue
 	{
+		if (preg_match('/^\\\\?[A-Za-z_][A-Za-z0-9_\\\\]*$/', $className) !== 1) {
+			throw new Exception("Invalid queue handler class identifier [{$className}].");
+		}
+
+		$cleanName = ltrim($className, '\\');
 		$candidates = [
-			$className,
-			'Site\\Queue\\' . ltrim($className, '\\'),
-			'ProcessWire\\' . ltrim($className, '\\'),
+			$cleanName,
+			'Site\\Queue\\' . $cleanName,
+			'ProcessWire\\' . $cleanName,
 		];
 
 		foreach ($candidates as $candidate) {
 			if (class_exists($candidate) && is_subclass_of($candidate, Queue::class)) {
-				/** @var Queue $instance */
-				$instance = new $candidate();
-				return $instance;
+				$ref = new \ReflectionClass($candidate);
+				if (!$ref->isAbstract()) {
+					/** @var Queue $instance */
+					$instance = new $candidate();
+					return $instance;
+				}
 			}
 		}
 
 		$map = $this->discoverQueues();
-		$basename = basename(str_replace('\\', '/', $className));
+		$basename = basename(str_replace('\\', '/', $cleanName));
 
 		if (isset($map[$basename])) {
-			$resolved = FeatureDiscoverer::resolveClassFromFile($map[$basename], $className, Queue::class);
+			$resolved = FeatureDiscoverer::resolveClassFromFile($map[$basename], $cleanName, Queue::class);
 			if ($resolved !== null) {
 				/** @var Queue $instance */
 				$instance = new $resolved();

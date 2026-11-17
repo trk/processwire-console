@@ -46,19 +46,27 @@ abstract class Seeder
 	 */
 	private function resolveSeederClass(string $class): ?string
 	{
-		foreach ([$class, "Site\\Seeders\\{$class}", "ProcessWire\\{$class}"] as $candidate) {
+		if (preg_match('/^\\\\?[A-Za-z_][A-Za-z0-9_\\\\]*$/', $class) !== 1) {
+			return null;
+		}
+
+		$cleanClass = ltrim($class, '\\');
+		foreach ([$cleanClass, "Site\\Seeders\\{$cleanClass}", "ProcessWire\\{$cleanClass}"] as $candidate) {
 			if (class_exists($candidate) && is_subclass_of($candidate, self::class)) {
-				return $candidate;
+				$ref = new \ReflectionClass($candidate);
+				if (!$ref->isAbstract()) {
+					return $candidate;
+				}
 			}
 		}
 
 		$discoverer = new FeatureDiscoverer($this->wire);
 		$seeders = $discoverer->discoverClasses('seeders', '*.php', self::class);
-		if (isset($seeders[$class])) {
-			return $seeders[$class];
+		if (isset($seeders[$cleanClass])) {
+			return $seeders[$cleanClass];
 		}
 
-		$shortName = basename(str_replace('\\', '/', $class));
+		$shortName = basename(str_replace('\\', '/', $cleanClass));
 		return $seeders[$shortName] ?? null;
 	}
 }

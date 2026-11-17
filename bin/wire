@@ -66,6 +66,7 @@ use Totoglu\Console\Commands\DbSeedCommand;
 use Totoglu\Console\Commands\MakeQueueCommand;
 use Totoglu\Console\Commands\MakeTestCommand;
 use Totoglu\Console\Commands\TestCommand;
+use Totoglu\Console\Commands\TestE2eCommand;
 use Totoglu\Console\Commands\MakeTaskCommand;
 use Totoglu\Console\Commands\ScheduleRunCommand;
 use Totoglu\Console\Commands\DownCommand;
@@ -115,7 +116,12 @@ if (!$autoloader || !file_exists($autoloader)) {
 	exit(1);
 }
 
-$autoloader = realpath($autoloader);
+$resolvedAutoloader = realpath($autoloader);
+if ($resolvedAutoloader === false) {
+	echo "Error: Could not resolve composer autoloader path.\n";
+	exit(1);
+}
+$autoloader = $resolvedAutoloader;
 
 $loader = require $autoloader;
 
@@ -123,9 +129,17 @@ spl_autoload_register(static function (string $class): void {
 	$prefix = 'Totoglu\\Console\\';
 	if (str_starts_with($class, $prefix)) {
 		$relative = substr($class, strlen($prefix));
-		$file = __DIR__ . '/../src/' . str_replace('\\', '/', $relative) . '.php';
-		if (is_file($file)) {
-			require_once $file;
+		if (preg_match('/^[A-Za-z_][A-Za-z0-9_\\\\]*$/', $relative) !== 1) {
+			return;
+		}
+		$baseDir = realpath(__DIR__ . '/../src');
+		if ($baseDir === false) {
+			return;
+		}
+		$file = $baseDir . '/' . str_replace('\\', '/', $relative) . '.php';
+		$realFile = realpath($file);
+		if ($realFile !== false && str_starts_with($realFile, $baseDir . DIRECTORY_SEPARATOR) && is_file($realFile)) {
+			require_once $realFile;
 		}
 	}
 }, true, true);
@@ -161,19 +175,26 @@ if (!$pwRoot) {
 // PSR-4 mapping to their root composer.json: "autoload": { "psr-4": { "Site\\": "site/" } }
 spl_autoload_register(function (string $class) use ($pwRoot): void {
 	$prefixes = [
-		'Site\\Seeders\\'  => 'seeders/',
-		'Site\\Schedule\\' => 'schedule/',
-		'Site\\Queue\\'    => 'queue/',
+		'Site\\Seeders\\' => 'seeders',
+		'Site\\Schedule\\' => 'schedule',
+		'Site\\Queue\\' => 'queue',
 	];
-	foreach ($prefixes as $prefix => $subPath) {
+	foreach ($prefixes as $prefix => $subDir) {
 		if (strncmp($prefix, $class, strlen($prefix)) !== 0) {
 			continue;
 		}
 		$relative = substr($class, strlen($prefix));
-		$relativeFile = str_replace('\\', '/', $relative) . '.php';
-		$file = rtrim($pwRoot, '/') . '/site/' . $subPath . $relativeFile;
-		if (file_exists($file)) {
-			require_once $file;
+		if (preg_match('/^[A-Za-z_][A-Za-z0-9_\\\\]*$/', $relative) !== 1) {
+			return;
+		}
+		$baseDir = realpath(rtrim($pwRoot, '/') . '/site/' . $subDir);
+		if ($baseDir === false) {
+			return;
+		}
+		$file = $baseDir . '/' . str_replace('\\', '/', $relative) . '.php';
+		$realFile = realpath($file);
+		if ($realFile !== false && str_starts_with($realFile, $baseDir . DIRECTORY_SEPARATOR) && is_file($realFile)) {
+			require_once $realFile;
 			return;
 		}
 	}
@@ -184,7 +205,7 @@ if (!class_exists('\ProcessWire\ProcessWire', false)) {
 }
 
 // Manual Clean Bootstrap
-$_SERVER['HTTP_HOST'] = 'localhost';
+$_SERVER['HTTP_HOST'] ??= 'localhost';
 $wire = null;
 $wireBootstrapError = null;
 
@@ -208,6 +229,16 @@ if (!($wire instanceof \ProcessWire\ProcessWire)) {
 	set_exception_handler(function (\Throwable $e) use ($wireBootstrapError): void {
 		if ($e instanceof \Error) {
 			$reason = $wireBootstrapError ?? 'ProcessWire is not fully bootstrapped (database/config may be missing).';
+			if (in_array('--json', $_SERVER['argv'] ?? [], true)) {
+				fwrite(STDOUT, (string) json_encode([
+					'ok' => false,
+					'error' => [
+						'code' => 'BOOTSTRAP_FAILED',
+						'message' => $reason,
+					],
+				], JSON_UNESCAPED_SLASHES) . "\n");
+				exit(1);
+			}
 			fwrite(STDERR, "ERROR: Cannot run this command — ProcessWire environment is unavailable.\n");
 			fwrite(STDERR, "Reason: {$reason}\n");
 			fwrite(STDERR, "Hint: Run 'wire list' or 'wire --help' to see available commands.\n");
@@ -230,8 +261,11 @@ if (class_exists('\Composer\InstalledVersions')) {
 $pwVersion = 'Unknown';
 if (class_exists('\ProcessWire\ProcessWire', false)) {
 	$pwVersion = \ProcessWire\ProcessWire::versionMajor . '.' . \ProcessWire\ProcessWire::versionMinor . '.' . \ProcessWire\ProcessWire::versionRevision;
-	if (\ProcessWire\ProcessWire::versionSuffix) {
-		$pwVersion .= '-' . \ProcessWire\ProcessWire::versionSuffix;
+	$suffix = defined(\ProcessWire\ProcessWire::class . '::versionSuffix')
+		? trim((string) constant(\ProcessWire\ProcessWire::class . '::versionSuffix'))
+		: '';
+	if ($suffix !== '') {
+		$pwVersion .= '-' . $suffix;
 	}
 }
 
@@ -298,6 +332,7 @@ $application->addCommands([
 	new DbSeedCommand(),
 	new MakeTestCommand(),
 	new TestCommand(),
+	new TestE2eCommand(),
 
 	// Scheduling Commands
 	new MakeTaskCommand(),

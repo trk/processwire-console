@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace Totoglu\Console\Traits;
 
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
 use function Laravel\Prompts\multiselect;
+use function Laravel\Prompts\note;
 use function Laravel\Prompts\search;
 use function ProcessWire\wire;
 
@@ -61,7 +65,7 @@ trait InteractWithProcessWire
 	 */
 	private function searchNamedWireItems(string $label, string $apiVar, string $placeholder): string
 	{
-		return search(
+		return (string) search(
 			label: $label,
 			options: function (string $value) use ($apiVar): array {
 				$options = [];
@@ -85,7 +89,7 @@ trait InteractWithProcessWire
 	 */
 	protected function searchUser(string $label = 'Search for a user'): string
 	{
-		return search(
+		return (string) search(
 			label: $label,
 			options: function (string $value): array {
 				$options = [];
@@ -138,7 +142,7 @@ trait InteractWithProcessWire
 	 */
 	protected function searchInstalledModule(string $label = 'Search for an installed module'): string
 	{
-		return search(
+		return (string) search(
 			label: $label,
 			options: function (string $value): array {
 				$options = [];
@@ -163,7 +167,7 @@ trait InteractWithProcessWire
 	 */
 	protected function searchInstallableModule(string $label = 'Search for a module to install'): string
 	{
-		return search(
+		return (string) search(
 			label: $label,
 			options: function (string $value): array {
 				$options = [];
@@ -190,7 +194,7 @@ trait InteractWithProcessWire
 	 */
 	protected function searchLog(string $label = 'Search for a log'): string
 	{
-		return search(
+		return (string) search(
 			label: $label,
 			options: function (string $value): array {
 				$options = [];
@@ -216,17 +220,19 @@ trait InteractWithProcessWire
 	protected function multiselectLogs(string $label = 'Select logs to clear'): array
 	{
 		$logs = wire('log')->getLogs();
-		$options = array_keys($logs);
+		$options = array_map('strval', array_keys($logs));
 
-		if (empty($options)) {
+		if ($options === []) {
 			return [];
 		}
 
-		return multiselect(
+		$selected = multiselect(
 			label: $label,
 			options: $options,
 			hint: 'Use Space to select, Enter to confirm.'
 		);
+
+		return array_values(array_map('strval', $selected));
 	}
 
 	/**
@@ -310,6 +316,178 @@ trait InteractWithProcessWire
 	}
 
 	/**
+	 * Output an error in either JSON or interactive CLI format and return Command::FAILURE.
+	 */
+	protected function failCommand(OutputInterface $output, bool $asJson, string $code, string $message): int
+	{
+		if ($asJson) {
+			return $this->outputJsonError($output, $code, $message);
+		}
+
+		error($message);
+		return Command::FAILURE;
+	}
+
+	/**
+	 * Determine whether the command may display interactive prompts.
+	 */
+	protected function canPrompt(InputInterface $input, bool $asJson, bool $force = false): bool
+	{
+		return $input->isInteractive() && !$asJson && !$force;
+	}
+
+	/**
+	 * Determine whether a ProcessWire Page is a protected core/system page (root, admin, trash, 404, RBAC containers, or statusSystem).
+	 */
+	protected function isProtectedSystemPage(\ProcessWire\Page $page): bool
+	{
+		$id = (int) $page->id;
+		if ($id <= 1) {
+			return true;
+		}
+
+		$config = wire('config');
+		$protectedIds = [
+			1,
+			(int) ($config->adminRootPageID ?? 2),
+			(int) ($config->trashPageID ?? 7),
+			(int) ($config->http404PageID ?? 27),
+			(int) ($config->usersPageID ?? 29),
+			(int) ($config->rolesPageID ?? 30),
+			(int) ($config->permissionsPageID ?? 31),
+		];
+
+		if (in_array($id, $protectedIds, true)) {
+			return true;
+		}
+
+		$systemMask = \ProcessWire\Page::statusSystemID | \ProcessWire\Page::statusSystem;
+		return (((int) $page->status) & $systemMask) !== 0;
+	}
+
+	/**
+	 * Check whether a ProcessWire selector string already defines a positive top-level `limit=N` clause.
+	 */
+	protected function selectorHasTopLevelLimit(string $selector): bool
+	{
+		$depth = 0;
+		$quote = '';
+		$current = '';
+		$length = strlen($selector);
+
+		for ($i = 0; $i < $length; $i++) {
+			$ch = $selector[$i];
+			if ($quote !== '') {
+				if ($ch === '\\' && $i + 1 < $length) {
+					$i++;
+					continue;
+				}
+				if ($ch === $quote) {
+					$quote = '';
+				}
+				continue;
+			}
+
+			if ($ch === '"' || $ch === "'") {
+				$quote = $ch;
+				continue;
+			}
+			if ($ch === '[') {
+				$depth++;
+				continue;
+			}
+			if ($ch === ']') {
+				$depth = max(0, $depth - 1);
+				continue;
+			}
+
+			if ($depth === 0) {
+				if ($ch === ',') {
+					if (preg_match('/^\s*limit\s*=\s*([1-9][0-9]*)\s*$/i', $current) === 1) {
+						return true;
+					}
+					$current = '';
+					continue;
+				}
+				$current .= $ch;
+			}
+		}
+
+		return preg_match('/^\s*limit\s*=\s*([1-9][0-9]*)\s*$/i', $current) === 1;
+	}
+
+	/**
+	 * Safely resolve a ProcessWire Page by numeric ID or leading-slash path without allowing raw selector injection.
+	 */
+	protected function resolvePage(int|string|null $id, ?string $path): ?\ProcessWire\Page
+	{
+		$pages = wire('pages');
+		$sanitizer = wire('sanitizer');
+
+		if ($id !== null && $id !== '') {
+			$idStr = trim((string) $id);
+			if (!ctype_digit($idStr)) {
+				return null;
+			}
+			$page = $pages->get((int) $idStr);
+			return ($page && $page->id) ? $page : null;
+		}
+
+		if ($path !== null && $path !== '') {
+			$cleanPath = trim($path);
+			if (!str_starts_with($cleanPath, '/')) {
+				return null;
+			}
+			$safePath = $sanitizer->selectorValue($cleanPath);
+			$page = $pages->get("path={$safePath}, include=all");
+			return ($page && $page->id) ? $page : null;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Safely look up a ProcessWire named collection item (users, roles, permissions) by exact pageName without selector injection.
+	 */
+	protected function findNamedSystemPage(string $apiVar, string $rawName): ?\ProcessWire\Page
+	{
+		$sanitizer = wire('sanitizer');
+		$clean = (string) $sanitizer->pageName(trim($rawName), true);
+		if ($clean === '' || $clean !== strtolower(trim($rawName))) {
+			// Also allow exact case-preserved pageName check
+			$exactClean = (string) $sanitizer->pageName(trim($rawName));
+			if ($exactClean === '' || $exactClean !== trim($rawName)) {
+				return null;
+			}
+			$clean = $exactClean;
+		}
+
+		$safeVal = $sanitizer->selectorValue($clean);
+		$item = wire($apiVar)->get("name={$safeVal}");
+
+		return ($item instanceof \ProcessWire\Page && $item->id) ? $item : null;
+	}
+
+	/**
+	 * Safely normalize and validate a ProcessWire log channel name, rejecting path separators and traversal tokens.
+	 */
+	protected function normalizeLogChannel(string $rawName): string
+	{
+		$trimmed = trim($rawName);
+		if ($trimmed === '' || str_contains($trimmed, '/') || str_contains($trimmed, '\\') || str_contains($trimmed, '..')) {
+			return '';
+		}
+		$base = (string) preg_replace('/\.txt$/i', '', $trimmed);
+		if ($base === '' || $base === '.' || $base === '..') {
+			return '';
+		}
+		if (preg_match('/^[A-Za-z0-9_-]+$/', $base) !== 1) {
+			return '';
+		}
+		return $base;
+	}
+
+	/**
 	 * Output a standard machine-readable JSON error payload and return Command::FAILURE.
 	 */
 	protected function outputJsonError(OutputInterface $output, string $code, string $message): int
@@ -328,7 +506,7 @@ trait InteractWithProcessWire
 	 * Scaffold a site or module feature class (Queue, Seeder, or Task) from a stub file.
 	 */
 	protected function scaffoldFeatureClass(
-		\Symfony\Component\Console\Input\InputInterface $input,
+		InputInterface $input,
 		OutputInterface $output,
 		string $label,
 		string $suffix,
@@ -341,12 +519,12 @@ trait InteractWithProcessWire
 		$asJson = (bool) $input->getOption('json');
 
 		if (!$this->isValidIdentifier($name)) {
-			$msg = "Invalid {$label} class name '{$name}'. Must match /^[A-Za-z][A-Za-z0-9_]*$/.";
-			if ($asJson) {
-				return $this->outputJsonError($output, 'INVALID_NAME', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'INVALID_NAME',
+				"Invalid {$label} class name '{$name}'. Must match /^[A-Za-z][A-Za-z0-9_]*$/."
+			);
 		}
 
 		if (!str_ends_with($name, $suffix)) {
@@ -356,12 +534,12 @@ trait InteractWithProcessWire
 		$rawModule = $input->getOption('module');
 		$module = ($rawModule !== null && $rawModule !== '') ? (string) $rawModule : null;
 		if ($module !== null && !$this->isValidIdentifier($module)) {
-			$msg = "Invalid module name '{$module}'. Must match /^[A-Za-z][A-Za-z0-9_]*$/.";
-			if ($asJson) {
-				return $this->outputJsonError($output, 'INVALID_MODULE', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'INVALID_MODULE',
+				"Invalid module name '{$module}'. Must match /^[A-Za-z][A-Za-z0-9_]*$/."
+			);
 		}
 
 		$config = wire('config');
@@ -373,19 +551,14 @@ trait InteractWithProcessWire
 			$namespace = $defaultNamespace;
 		}
 
-		if (!is_dir($targetDir)) {
-			mkdir($targetDir, 0755, true);
+		if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to create directory: {$targetDir}");
 		}
 
 		$filePath = $targetDir . $name . '.php';
 		if (file_exists($filePath)) {
 			$ucLabel = ucfirst($label);
-			$msg = "{$ucLabel} file already exists: {$name}.php";
-			if ($asJson) {
-				return $this->outputJsonError($output, 'ALREADY_EXISTS', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "{$ucLabel} file already exists: {$name}.php");
 		}
 
 		$content = $this->loadStub($stubFile, [
@@ -393,15 +566,12 @@ trait InteractWithProcessWire
 			'{{class}}' => $name,
 		]);
 		if ($content === null) {
-			$msg = "Stub file not found: {$stubFile}";
-			if ($asJson) {
-				return $this->outputJsonError($output, 'STUB_NOT_FOUND', $msg);
-			}
-			\Laravel\Prompts\error($msg);
-			return Command::FAILURE;
+			return $this->failCommand($output, $asJson, 'STUB_NOT_FOUND', "Stub file not found: {$stubFile}");
 		}
 
-		file_put_contents($filePath, $content);
+		if (file_put_contents($filePath, $content) === false) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to write file: {$filePath}");
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, [
@@ -411,8 +581,8 @@ trait InteractWithProcessWire
 			]);
 		}
 
-		\Laravel\Prompts\info("{$successMessagePrefix}: {$name}");
-		\Laravel\Prompts\note("Path: {$filePath}");
+		info("{$successMessagePrefix}: {$name}");
+		note("Path: {$filePath}");
 
 		return Command::SUCCESS;
 	}

@@ -28,27 +28,55 @@ final class FeatureDiscoverer
 	 */
 	public function discoverPaths(string $feature): array
 	{
+		return self::discoverPathsFromRoots(
+			(string) $this->wire->config->paths->site,
+			(string) $this->wire->config->paths->siteModules,
+			$feature,
+			fn(string $moduleName): bool => (bool) $this->wire->modules->isInstalled($moduleName)
+		);
+	}
+
+	/**
+	 * Discover feature directories across site/ and installed site/modules/<Module>/.
+	 *
+	 * @param callable(string): bool $isModuleInstalled
+	 * @return array<int, string>
+	 */
+	public static function discoverPathsFromRoots(
+		string $siteRoot,
+		string $siteModulesRoot,
+		string $feature,
+		callable $isModuleInstalled
+	): array {
 		$paths = [];
-		$featureDir = trim($feature, '/');
+		$featureDir = trim(str_replace('\\', '/', $feature), '/');
+		if ($featureDir === '') {
+			return [];
+		}
+
+		$segmentCount = substr_count($featureDir, '/') + 1;
+		$normalizedSiteRoot = rtrim(str_replace('\\', '/', $siteRoot), '/') . '/';
+		$normalizedModulesRoot = rtrim(str_replace('\\', '/', $siteModulesRoot), '/') . '/';
 
 		// 1. Root site feature path
-		$sitePath = $this->wire->config->paths->site . $featureDir . '/';
+		$sitePath = $normalizedSiteRoot . $featureDir . '/';
 		if (is_dir($sitePath)) {
 			$paths[] = $sitePath;
 		}
 
 		// 2. Module feature paths (only for installed modules)
-		$modulesPath = $this->wire->config->paths->siteModules;
-		if (is_dir($modulesPath)) {
-			$matchedDirs = glob($modulesPath . '*/' . $featureDir . '/', GLOB_ONLYDIR);
+		if (is_dir($normalizedModulesRoot)) {
+			$matchedDirs = glob($normalizedModulesRoot . '*/' . $featureDir . '/', GLOB_ONLYDIR);
 			if ($matchedDirs !== false) {
 				foreach ($matchedDirs as $dir) {
-					$dir = str_replace('\\', '/', $dir);
+					$dir = rtrim(str_replace('\\', '/', $dir), '/') . '/';
 					$parts = explode('/', trim($dir, '/'));
-					array_pop($parts); // remove featureDir
-					$moduleName = array_pop($parts); // get module name
+					for ($i = 0; $i < $segmentCount; $i++) {
+						array_pop($parts);
+					}
+					$moduleFolder = array_pop($parts);
 
-					if ($moduleName !== null && $this->wire->modules->isInstalled($moduleName)) {
+					if ($moduleFolder !== null && $moduleFolder !== '' && self::isModuleDirectoryActive($normalizedModulesRoot . $moduleFolder, $moduleFolder, $isModuleInstalled)) {
 						$paths[] = $dir;
 					}
 				}
@@ -56,6 +84,33 @@ final class FeatureDiscoverer
 		}
 
 		return $paths;
+	}
+
+	/**
+	 * Check whether a module directory is installed directly by folder name or via any companion .module(.php) class inside it.
+	 *
+	 * @param callable(string): bool $isModuleInstalled
+	 */
+	public static function isModuleDirectoryActive(string $moduleDir, string $moduleFolder, callable $isModuleInstalled): bool
+	{
+		if ($isModuleInstalled($moduleFolder)) {
+			return true;
+		}
+
+		$normalizedDir = rtrim(str_replace('\\', '/', $moduleDir), '/');
+		$moduleFiles = array_merge(
+			glob($normalizedDir . '/*.module.php') ?: [],
+			glob($normalizedDir . '/*.module') ?: []
+		);
+
+		foreach ($moduleFiles as $moduleFile) {
+			$className = (string) preg_replace('/\.module(\.php)?$/', '', basename($moduleFile));
+			if ($className !== '' && $isModuleInstalled($className)) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -111,10 +166,11 @@ final class FeatureDiscoverer
 	/**
 	 * Require a PHP file and resolve the fully-qualified class name for a given basename.
 	 *
+	 * @template T of object
 	 * @param string $filePath Absolute path to the PHP file
 	 * @param string $classBasename Short class name or FQCN
-	 * @param string|null $expectedSubclass Optional base class or interface to verify via is_subclass_of()
-	 * @return class-string|null
+	 * @param class-string<T>|null $expectedSubclass Optional base class or interface to verify via is_subclass_of()
+	 * @return ($expectedSubclass is null ? class-string|null : class-string<T>|null)
 	 */
 	public static function resolveClassFromFile(string $filePath, string $classBasename, ?string $expectedSubclass = null): ?string
 	{
@@ -141,9 +197,16 @@ final class FeatureDiscoverer
 		$candidates[] = 'Site\\Schedule\\' . $shortName;
 
 		foreach (array_unique($candidates) as $candidate) {
+			if (preg_match('/^[A-Za-z_][A-Za-z0-9_\\\\]*$/', $candidate) !== 1) {
+				continue;
+			}
 			if (class_exists($candidate)) {
 				if ($expectedSubclass === null || is_subclass_of($candidate, $expectedSubclass)) {
-					/** @var class-string $candidate */
+					$ref = new \ReflectionClass($candidate);
+					if ($ref->isAbstract() || $ref->isInterface() || $ref->isTrait()) {
+						continue;
+					}
+					/** @var class-string<T> $candidate */
 					return $candidate;
 				}
 			}
@@ -155,10 +218,11 @@ final class FeatureDiscoverer
 	/**
 	 * Discover all classes in a feature folder matching a file pattern and subclass contract.
 	 *
+	 * @template T of object
 	 * @param string $feature Feature folder name (e.g., 'commands', 'seeders', 'schedule', 'queue')
 	 * @param string $pattern File glob pattern (e.g., '*Command.php')
-	 * @param string $expectedSubclass Required parent class or interface
-	 * @return array<string, class-string> Map of [Basename => FQCN]
+	 * @param class-string<T> $expectedSubclass Required parent class or interface
+	 * @return array<string, class-string<T>> Map of [Basename => FQCN]
 	 */
 	public function discoverClasses(string $feature, string $pattern, string $expectedSubclass): array
 	{
@@ -261,8 +325,14 @@ final class FeatureDiscoverer
 		}
 
 		foreach ($commands as $fqcn) {
-			if (is_string($fqcn) && class_exists($fqcn) && is_subclass_of($fqcn, Command::class)) {
-				$discovered[] = $fqcn;
+			if (!is_string($fqcn) || preg_match('/^\\\\?[A-Za-z_][A-Za-z0-9_\\\\]*$/', $fqcn) !== 1) {
+				continue;
+			}
+			if (class_exists($fqcn) && is_subclass_of($fqcn, Command::class)) {
+				$ref = new \ReflectionClass($fqcn);
+				if (!$ref->isAbstract()) {
+					$discovered[] = $fqcn;
+				}
 			}
 		}
 	}
