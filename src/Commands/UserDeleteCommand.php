@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 
@@ -32,38 +31,47 @@ final class UserDeleteCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$id = $input->getOption('id');
-		$username = $input->getOption('name') ? (string) $input->getOption('name') : '';
+		$rawId = $input->getOption('id');
+		$idStr = ($rawId !== null && $rawId !== '') ? trim((string) $rawId) : '';
+		$username = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
-		if (!$id && !$username && !$asJson) {
+		if ($idStr === '' && $username === '' && $this->canPrompt($input, $asJson, $force)) {
 			$username = $this->searchUser('Select a user to delete');
 			if ($username === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$id && !$username) {
-			$msg = 'Provide --id or --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_IDENTIFIER', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($idStr === '' && $username === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_IDENTIFIER', 'Provide --id or --name.');
 		}
 
 		$users = \ProcessWire\wire('users');
-		$user = $id ? $users->get((int) $id) : $users->get((string) $username);
-		if (!$user || !$user->id) {
-			$msg = 'User not found.';
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($idStr !== '') {
+			if (!ctype_digit($idStr)) {
+				return $this->failCommand($output, $asJson, 'INVALID_ID', 'Option --id must be a positive integer.');
+			}
+			$user = $users->get((int) $idStr);
+		} else {
+			$user = $this->findNamedSystemPage('users', $username);
+		}
+
+		if (!($user instanceof \ProcessWire\User) || !$user->id) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'User not found.');
 		}
 		if ($user->isSuperuser()) {
-			$msg = 'Refusing to delete a superuser.';
-			return $asJson ? $this->outputJsonError($output, 'SUPERUSER_PROTECTED', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'SUPERUSER_PROTECTED', 'Refusing to delete a superuser.');
+		}
+		if ((string) $user->name === 'guest') {
+			return $this->failCommand($output, $asJson, 'GUEST_PROTECTED', 'Refusing to delete the built-in guest user.');
 		}
 
 		if (!$force && !$dryRun) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run user:delete non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run user:delete non-interactively.');
 			}
 			if (!confirm("Delete user '{$user->name}' (ID {$user->id})?", false)) {
 				note('Aborted.');
@@ -71,7 +79,7 @@ final class UserDeleteCommand extends Command
 			}
 		}
 
-		$result = ['id' => $user->id, 'name' => $user->name, 'dryRun' => $dryRun];
+		$result = ['id' => (int) $user->id, 'name' => (string) $user->name, 'dryRun' => $dryRun];
 		if ($dryRun) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $result);
@@ -83,8 +91,7 @@ final class UserDeleteCommand extends Command
 		try {
 			$users->delete($user);
 		} catch (\Throwable $e) {
-			$msg = "Delete failed for user '{$user->name}': " . $e->getMessage();
-			return $asJson ? $this->outputJsonError($output, 'DELETE_FAILED', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'DELETE_FAILED', "Delete failed for user '{$user->name}': " . $e->getMessage());
 		}
 
 		if ($asJson) {

@@ -37,17 +37,18 @@ final class FieldListCommand extends Command
 		$filtered = [];
 
 		foreach ($fields as $field) {
-			if ($type && stripos($field->type->className(), (string) $type) === false) {
+			$typeName = $field->type ? $field->type->className() : 'Unknown';
+			if ($type && stripos($typeName, (string) $type) === false) {
 				continue;
 			}
-			if ($search && (stripos($field->name, (string) $search) === false && stripos((string) $field->label, (string) $search) === false)) {
+			if ($search && (stripos((string) $field->name, (string) $search) === false && stripos((string) $field->label, (string) $search) === false)) {
 				continue;
 			}
 
 			$filtered[] = $field;
 		}
 
-		if (empty($filtered)) {
+		if ($filtered === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0]);
 			}
@@ -58,7 +59,7 @@ final class FieldListCommand extends Command
 		if ($asJson) {
 			$items = [];
 			foreach ($filtered as $field) {
-				$templates = array_map(static fn(object $t): string => (string) $t->name, iterator_to_array($field->getTemplates()));
+				$templates = array_map(static fn(\ProcessWire\Template $t): string => (string) $t->name, iterator_to_array($field->getTemplates()));
 				$flags = [];
 				if ($field->flags & \ProcessWire\Field::flagSystem) {
 					$flags[] = 'sys';
@@ -67,9 +68,9 @@ final class FieldListCommand extends Command
 					$flags[] = 'perm';
 				}
 				$items[] = [
-					'id' => $field->id,
-					'name' => $field->name,
-					'type' => $field->type->className(),
+					'id' => (int) $field->id,
+					'name' => (string) $field->name,
+					'type' => $field->type ? $field->type->className() : 'Unknown',
 					'label' => (string) $field->label,
 					'contexts' => count($templates),
 					'flags' => $flags,
@@ -82,7 +83,7 @@ final class FieldListCommand extends Command
 		$rows = [];
 
 		foreach ($filtered as $field) {
-			$templates = array_map(fn($t) => $t->name, iterator_to_array($field->getTemplates()));
+			$templates = array_map(static fn(\ProcessWire\Template $t): string => (string) $t->name, iterator_to_array($field->getTemplates()));
 			$flags = [];
 			if ($field->flags & \ProcessWire\Field::flagSystem) {
 				$flags[] = 'sys';
@@ -93,8 +94,8 @@ final class FieldListCommand extends Command
 
 			$rows[] = [
 				(string) $field->id,
-				$field->name,
-				$field->type->className(),
+				(string) $field->name,
+				$field->type ? $field->type->className() : 'Unknown',
 				mb_strimwidth((string) $field->label, 0, 30, '...'),
 				(string) count($templates),
 				implode('|', $flags) ?: '-',

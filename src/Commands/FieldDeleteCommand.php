@@ -11,7 +11,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 
@@ -38,7 +37,7 @@ final class FieldDeleteCommand extends Command
 		$dryRun = (bool) $input->getOption('dry-run');
 		$name = $input->getOption('name') ?: $input->getArgument('name');
 
-		if (!$name && !$asJson) {
+		if (!$name && $this->canPrompt($input, $asJson, $force)) {
 			$name = $this->searchField('Search for a field to delete');
 			if ($name === '') {
 				return Command::SUCCESS;
@@ -46,42 +45,57 @@ final class FieldDeleteCommand extends Command
 		}
 
 		if (!$name) {
-			$msg = 'Provide field name via argument or --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide field name via argument or --name.');
+		}
+
+		if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $name) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid field name: '{$name}'.");
 		}
 
 		$field = \ProcessWire\wire('fields')->get((string) $name);
-
 		if (!$field || !$field->id) {
-			$msg = "Field '{$name}' not found.";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Field '{$name}' not found.");
 		}
 
-		if ($field->flags & \ProcessWire\Field::flagSystem) {
-			$msg = "Field '{$name}' is a system field and cannot be deleted.";
-			return $asJson ? $this->outputJsonError($output, 'SYSTEM_FIELD', $msg) : (error($msg) ?? Command::FAILURE);
+		$protectedFlags = \ProcessWire\Field::flagSystem | \ProcessWire\Field::flagPermanent | \ProcessWire\Field::flagGlobal;
+		if ((((int) $field->flags) & $protectedFlags) !== 0 || (string) $field->name === 'title') {
+			return $this->failCommand($output, $asJson, 'SYSTEM_FIELD', "Field '{$name}' is a protected core/global field and cannot be deleted.");
 		}
 
-		$result = ['name' => $name, 'dryRun' => $dryRun];
+		$fieldgroups = $field->getFieldgroups();
+		if ($fieldgroups->count() > 0) {
+			$attachedNames = $fieldgroups->implode(', ', 'name');
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'FIELD_IN_USE',
+				"Field '{$name}' is still attached to template(s): {$attachedNames}. Detach it first."
+			);
+		}
+
+		$result = ['name' => (string) $field->name, 'dryRun' => $dryRun];
 		if ($dryRun) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $result);
 			}
-			note("Dry-run: would delete field '{$name}'.");
+			note("Dry-run: would delete field '{$field->name}'.");
 			return Command::SUCCESS;
 		}
 
 		if (!$force && (!$input->isInteractive() || $asJson)) {
-			$msg = "Deleting field '{$name}' in non-interactive or JSON mode requires --force.";
-			return $asJson ? $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', "Deleting field '{$field->name}' in non-interactive or JSON mode requires --force.");
 		}
 
-		if ($force || confirm("Are you sure you want to delete field '{$name}'? This will delete all data associated with it.", false)) {
-			\ProcessWire\wire('fields')->delete($field);
+		if ($force || confirm("Are you sure you want to delete field '{$field->name}'? This will delete all data associated with it.", default: false)) {
+			try {
+				\ProcessWire\wire('fields')->delete($field);
+			} catch (\Throwable $e) {
+				return $this->failCommand($output, $asJson, 'DELETE_FAILED', $e->getMessage());
+			}
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $result + ['deleted' => true]);
 			}
-			info("Field '{$name}' deleted.");
+			info("Field '{$field->name}' deleted.");
 			return Command::SUCCESS;
 		}
 

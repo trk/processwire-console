@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
@@ -35,14 +34,14 @@ final class TemplateRenameCommand extends Command
 		$new = $input->getOption('new-name');
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$old && !$asJson) {
+		if (!$old && $this->canPrompt($input, $asJson)) {
 			$old = $this->searchTemplate('Select the template to rename');
 			if ($old === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$new && !$asJson) {
+		if (!$new && $this->canPrompt($input, $asJson)) {
 			$new = text(
 				label: 'Enter the new template name',
 				required: true,
@@ -53,25 +52,25 @@ final class TemplateRenameCommand extends Command
 		$dryRun = (bool) $input->getOption('dry-run');
 
 		if (!$old || !$new) {
-			$msg = 'Provide --name and --new-name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --name and --new-name.');
 		}
 
-		if (!preg_match('/^[a-zA-Z0-9_-]+$/', (string) $new)) {
-			$msg = "Invalid template name format: '{$new}'.";
-			return $asJson ? $this->outputJsonError($output, 'INVALID_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+		if (!preg_match('/^[a-zA-Z0-9_-]+$/', (string) $old) || !preg_match('/^[a-zA-Z0-9_-]+$/', (string) $new)) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid template name format: '{$new}'.");
 		}
 
 		$templates = \ProcessWire\wire('templates');
 		$t = $templates->get((string) $old);
 		if (!$t || !$t->id) {
-			$msg = "Template not found: {$old}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$old}");
 		}
+		if ($t->flags & \ProcessWire\Template::flagSystem) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$old}' is a system template and cannot be renamed.");
+		}
+
 		$existingNew = $templates->get((string) $new);
 		if ($existingNew && $existingNew->id) {
-			$msg = "A template named '{$new}' already exists.";
-			return $asJson ? $this->outputJsonError($output, 'ALREADY_EXISTS', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "A template named '{$new}' already exists.");
 		}
 
 		$result = ['old' => $old, 'new' => $new, 'dryRun' => $dryRun];
@@ -84,7 +83,7 @@ final class TemplateRenameCommand extends Command
 		}
 
 		$t->name = (string) $new;
-		$t->save();
+		$templates->save($t);
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['renamed' => true]);

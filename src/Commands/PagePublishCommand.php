@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 
@@ -31,11 +30,11 @@ final class PagePublishCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$id = $input->getOption('id');
-		$path = $input->getOption('path');
+		$path = $input->getOption('path') !== null ? (string) $input->getOption('path') : null;
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$id && !$path && !$asJson) {
+		if (!$id && !$path && $this->canPrompt($input, $asJson)) {
 			$id = $this->searchPage('Select a page to publish');
 			if ($id === '') {
 				return Command::SUCCESS;
@@ -43,15 +42,12 @@ final class PagePublishCommand extends Command
 		}
 
 		if (!$id && !$path) {
-			$msg = 'Provide --id or --path.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_IDENTIFIER', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_IDENTIFIER', 'Provide --id or --path.');
 		}
 
-		$pages = \ProcessWire\wire('pages');
-		$page = $id ? $pages->get((int) $id) : $pages->get((string) $path);
-		if (!$page || !$page->id) {
-			$msg = 'Page not found.';
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		$page = $this->resolvePage($id, $path);
+		if ($page === null) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'Page not found.');
 		}
 
 		$result = ['id' => $page->id, 'path' => $page->path, 'wasUnpublished' => $page->isUnpublished(), 'dryRun' => $dryRun];
@@ -64,8 +60,13 @@ final class PagePublishCommand extends Command
 			return Command::SUCCESS;
 		}
 
+		$page->of(false);
 		$page->removeStatus(\ProcessWire\Page::statusUnpublished);
-		$page->save();
+		try {
+			$page->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['published' => true]);

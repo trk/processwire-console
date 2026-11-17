@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\warning;
@@ -32,21 +31,24 @@ final class ModuleUninstallCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$name = $input->getOption('name') ? (string) $input->getOption('name') : '';
+		$name = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
-		if (!$name && !$asJson) {
+		if ($name === '' && $this->canPrompt($input, $asJson, $force)) {
 			$name = $this->searchInstalledModule('Select a module to uninstall');
-			if (empty($name)) {
+			if ($name === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$name) {
-			$msg = 'Provide --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($name === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide --name.');
+		}
+
+		if (!$this->isValidIdentifier($name)) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid module class name '{$name}'.");
 		}
 
 		$modules = \ProcessWire\wire('modules');
@@ -59,9 +61,28 @@ final class ModuleUninstallCommand extends Command
 			return Command::SUCCESS;
 		}
 
+		$info = $modules->getModuleInfoVerbose($name);
+		if (!empty($info['permanent'])) {
+			return $this->failCommand($output, $asJson, 'PERMANENT_MODULE', "Module '{$name}' is marked permanent and cannot be uninstalled.");
+		}
+
+		$requiredBy = isset($info['requiredBy']) && is_array($info['requiredBy']) ? $info['requiredBy'] : [];
+		$installedDependents = array_values(array_filter(
+			array_map('strval', $requiredBy),
+			static fn(string $dep): bool => (bool) $modules->isInstalled($dep)
+		));
+		if ($installedDependents !== []) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'MODULE_REQUIRED_BY',
+				"Module '{$name}' cannot be uninstalled because it is required by: " . implode(', ', $installedDependents)
+			);
+		}
+
 		if (!$force && !$dryRun) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run module:uninstall non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run module:uninstall non-interactively.');
 			}
 			if (!confirm("Uninstall module '{$name}'?", false)) {
 				note('Aborted.');
@@ -82,10 +103,12 @@ final class ModuleUninstallCommand extends Command
 			if (!$asJson) {
 				info("Uninstalling module '{$name}'...");
 			}
-			$modules->uninstall($name);
+			$ok = $modules->uninstall($name);
+			if ($ok === false || $modules->isInstalled($name)) {
+				return $this->failCommand($output, $asJson, 'UNINSTALL_FAILED', "ProcessWire refused to uninstall module '{$name}'.");
+			}
 		} catch (\Throwable $e) {
-			$msg = "Uninstall failed for module '{$name}': " . $e->getMessage();
-			return $asJson ? $this->outputJsonError($output, 'UNINSTALL_FAILED', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'UNINSTALL_FAILED', "Uninstall failed for module '{$name}': " . $e->getMessage());
 		}
 
 		if ($asJson) {

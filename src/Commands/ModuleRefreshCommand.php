@@ -26,15 +26,22 @@ final class ModuleRefreshCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$name = $input->getOption('name') ? (string) $input->getOption('name') : '';
+		$name = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
 		$asJson = (bool) $input->getOption('json');
 
+		if ($name !== '' && !$this->isValidIdentifier($name)) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid module class name '{$name}'.");
+		}
+
 		$modules = \ProcessWire\wire('modules');
+		$modules->refresh();
+
 		if ($name !== '') {
-			$modules->refresh();
+			if (!$modules->isInstalled($name) && !$modules->getModuleFile($name)) {
+				return $this->failCommand($output, $asJson, 'NOT_FOUND', "Module not found: {$name}");
+			}
 			$data = ['name' => $name, 'refreshed' => true];
 		} else {
-			$modules->refresh();
 			$data = ['all' => true, 'refreshed' => true];
 		}
 

@@ -55,6 +55,8 @@ final class TemplateListCommand extends Command
 			return Command::SUCCESS;
 		}
 
+		$sanitizer = \ProcessWire\wire('sanitizer');
+
 		if ($asJson) {
 			$items = [];
 			foreach ($filtered as $template) {
@@ -63,11 +65,12 @@ final class TemplateListCommand extends Command
 					$flags[] = 'sys';
 				}
 				$fieldCount = count($template->fields ?: []);
-				$pageCount = \ProcessWire\wire('pages')->count("template={$template->name}, include=all");
+				$safeTpl = $sanitizer->selectorValue((string) $template->name);
+				$pageCount = \ProcessWire\wire('pages')->count("template={$safeTpl}, include=all");
 				$items[] = [
-					'id' => $template->id,
-					'name' => $template->name,
-					'tag' => $template->tags ?: '',
+					'id' => (int) $template->id,
+					'name' => (string) $template->name,
+					'tag' => (string) ($template->tags ?: ''),
 					'fields' => $fieldCount,
 					'pages' => (int) $pageCount,
 					'flags' => $flags,
@@ -83,13 +86,14 @@ final class TemplateListCommand extends Command
 				$flags[] = 'sys';
 			}
 			$fieldCount = count($template->fields ?: []);
-			$pageCount = \ProcessWire\wire('pages')->count("template={$template->name}, include=all");
+			$safeTpl = $sanitizer->selectorValue((string) $template->name);
+			$pageCount = \ProcessWire\wire('pages')->count("template={$safeTpl}, include=all");
 			$rows[] = [
-				$template->id,
-				$template->name,
-				$template->tags ?: '-',
-				$fieldCount,
-				$pageCount,
+				(string) $template->id,
+				(string) $template->name,
+				(string) ($template->tags ?: '-'),
+				(string) $fieldCount,
+				(string) $pageCount,
 				implode('|', $flags) ?: '-',
 			];
 		}

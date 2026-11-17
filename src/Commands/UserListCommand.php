@@ -51,7 +51,7 @@ final class UserListCommand extends Command
 		$users = \ProcessWire\wire('users')->find(implode(', ', $selector));
 		if (!$users->count()) {
 			if ($asJson) {
-				return $this->outputJsonSuccess($output, ['items' => [], 'limit' => $limit]);
+				return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0, 'limit' => $limit]);
 			}
 			warning('No users found.');
 			return Command::SUCCESS;
@@ -62,7 +62,7 @@ final class UserListCommand extends Command
 			foreach ($users as $user) {
 				$roles = [];
 				foreach ($user->roles as $r) {
-					$roles[] = $r->name;
+					$roles[] = (string) $r->name;
 				}
 				$flags = [];
 				if ($user->isSuperuser()) {
@@ -72,14 +72,18 @@ final class UserListCommand extends Command
 					$flags[] = 'unpub';
 				}
 				$items[] = [
-					'id' => $user->id,
-					'name' => $user->name,
+					'id' => (int) $user->id,
+					'name' => (string) $user->name,
 					'email' => (string) ($user->email ?? ''),
 					'roles' => $roles,
-					'flags' => $flags ?: ['ok'],
+					'flags' => $flags !== [] ? $flags : ['ok'],
 				];
 			}
-			return $this->outputJsonSuccess($output, ['items' => $items, 'limit' => $limit]);
+			return $this->outputJsonSuccess($output, [
+				'items' => $items,
+				'total' => (int) $users->getTotal(),
+				'limit' => $limit,
+			]);
 		}
 
 		$headers = ['ID', 'Name', 'Email', 'Roles', 'Flags'];
@@ -87,7 +91,7 @@ final class UserListCommand extends Command
 		foreach ($users as $user) {
 			$roles = [];
 			foreach ($user->roles as $r) {
-				$roles[] = $r->name;
+				$roles[] = (string) $r->name;
 			}
 			$flags = [];
 			if ($user->isSuperuser()) {
@@ -97,11 +101,11 @@ final class UserListCommand extends Command
 				$flags[] = 'unpub';
 			}
 			$rows[] = [
-				$user->id,
-				$user->name,
+				(string) $user->id,
+				(string) $user->name,
 				(string) ($user->email ?? ''),
 				implode(',', $roles),
-				implode('|', $flags) ?: 'ok',
+				$flags !== [] ? implode('|', $flags) : 'ok',
 			];
 		}
 

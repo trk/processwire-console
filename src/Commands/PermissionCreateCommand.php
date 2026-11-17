@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\text;
 
@@ -36,7 +35,7 @@ final class PermissionCreateCommand extends Command
 		$name = $input->getOption('name') ?: $input->getArgument('name');
 		$title = $input->getOption('title') ?: $input->getArgument('title');
 
-		if (!$name && $input->isInteractive() && !$asJson) {
+		if (!$name && $this->canPrompt($input, $asJson)) {
 			$name = text('Permission name', required: true);
 			if (!$title) {
 				$title = text('Permission title (optional)', required: false);
@@ -44,17 +43,22 @@ final class PermissionCreateCommand extends Command
 		}
 
 		if (!$name) {
-			$msg = 'Provide permission name via --name or argument.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide permission name via --name or argument.');
 		}
 
-		$existing = \ProcessWire\wire('permissions')->get((string) $name);
-		if ($existing && $existing->id) {
-			$msg = "Permission '{$name}' already exists.";
-			return $asJson ? $this->outputJsonError($output, 'ALREADY_EXISTS', $msg) : (error($msg) ?? Command::FAILURE);
+		$rawName = trim((string) $name);
+		$cleanName = (string) \ProcessWire\wire('sanitizer')->pageName($rawName, true);
+		if ($cleanName === '' || $cleanName !== strtolower($rawName) || ctype_digit($cleanName)) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid permission name '{$rawName}'. Must be a valid non-numeric ProcessWire page name.");
 		}
 
-		$p = \ProcessWire\wire('permissions')->add((string) $name);
+		$existing = $this->findNamedSystemPage('permissions', $cleanName);
+		if ($existing !== null) {
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "Permission '{$cleanName}' already exists.");
+		}
+
+		$p = \ProcessWire\wire('permissions')->add($cleanName);
+		$p->of(false);
 		if ($title) {
 			$p->title = (string) $title;
 		}
@@ -62,13 +66,13 @@ final class PermissionCreateCommand extends Command
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, [
-				'id' => $p->id,
-				'name' => $p->name,
+				'id' => (int) $p->id,
+				'name' => (string) $p->name,
 				'title' => (string) ($p->title ?: ''),
 			]);
 		}
 
-		info("Permission '{$name}' created.");
+		info("Permission '{$p->name}' created.");
 
 		return Command::SUCCESS;
 	}

@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
@@ -25,7 +24,7 @@ final class TemplateUpdateCommand extends Command
 			->setName('template:update')
 			->setDescription('Update template settings (e.g., tags, flags).')
 			->addOption('name', null, InputOption::VALUE_OPTIONAL, 'Template name')
-			->addOption('set', null, InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Set template property as key=value (repeatable or comma-separated)')
+			->addOption('set', null, InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Set template property as key=value (repeatable)')
 			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
 	}
@@ -35,7 +34,7 @@ final class TemplateUpdateCommand extends Command
 		$name = $input->getOption('name');
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$name && !$asJson) {
+		if (!$name && $this->canPrompt($input, $asJson)) {
 			$name = $this->searchTemplate('Select the template to update');
 			if ($name === '') {
 				return Command::SUCCESS;
@@ -43,33 +42,35 @@ final class TemplateUpdateCommand extends Command
 		}
 
 		if (!$name) {
-			$msg = 'Provide --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide --name.');
+		}
+
+		if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $name) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid template name: '{$name}'.");
 		}
 
 		$setRaw = $input->getOption('set');
 		$changes = $this->parseKeyValueSets($setRaw);
 
-		if (empty($changes) && !$asJson && $input->isInteractive()) {
+		if ($changes === [] && $this->canPrompt($input, $asJson)) {
 			$prompted = text(
-				label: 'Enter key=value pairs to set',
-				placeholder: 'tags=content,flags=1',
+				label: 'Enter key=value pair to set',
+				placeholder: 'tags=content',
 				required: true
 			);
 			$changes = $this->parseKeyValueSets($prompted);
 		}
+		unset($changes['id'], $changes['name'], $changes['flags'], $changes['fieldgroup'], $changes['fieldgroup_id']);
 
 		$dryRun = (bool) $input->getOption('dry-run');
 
 		$template = \ProcessWire\wire('templates')->get((string) $name);
 		if (!$template || !$template->id) {
-			$msg = "Template not found: {$name}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$name}");
 		}
 
-		if (empty($changes)) {
-			$msg = 'No valid key=value pairs provided.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_CHANGES', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($changes === []) {
+			return $this->failCommand($output, $asJson, 'MISSING_CHANGES', 'No valid key=value pairs provided.');
 		}
 
 		$result = ['name' => $name, 'changes' => $changes, 'dryRun' => $dryRun];
@@ -90,7 +91,7 @@ final class TemplateUpdateCommand extends Command
 				}
 			}
 		}
-		$template->save();
+		\ProcessWire\wire('templates')->save($template);
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['saved' => true]);

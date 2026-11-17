@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
@@ -34,7 +33,7 @@ final class TemplateFieldsReorderCommand extends Command
 		$templateName = $input->getOption('template');
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$templateName && !$asJson) {
+		if (!$templateName && $this->canPrompt($input, $asJson)) {
 			$templateName = $this->searchTemplate('Select the template to reorder fields');
 			if ($templateName === '') {
 				return Command::SUCCESS;
@@ -42,13 +41,16 @@ final class TemplateFieldsReorderCommand extends Command
 		}
 
 		if (!$templateName) {
-			$msg = 'Provide --template.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_TEMPLATE', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_TEMPLATE', 'Provide --template.');
+		}
+
+		if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $templateName) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_TEMPLATE', "Invalid template name: '{$templateName}'.");
 		}
 
 		$orderRaw = $input->getOption('fields');
 		$orderStr = $orderRaw ? (string) $orderRaw : '';
-		if (!$orderStr && !$asJson) {
+		if ($orderStr === '' && $this->canPrompt($input, $asJson)) {
 			$orderStr = text(
 				label: 'Enter comma-separated field names in desired order',
 				required: true
@@ -57,16 +59,14 @@ final class TemplateFieldsReorderCommand extends Command
 
 		$dryRun = (bool) $input->getOption('dry-run');
 
-		if (!$orderStr) {
-			$msg = 'Provide --fields.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_FIELDS', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($orderStr === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_FIELDS', 'Provide --fields.');
 		}
 
 		$templates = \ProcessWire\wire('templates');
 		$template = $templates->get((string) $templateName);
 		if (!$template || !$template->id) {
-			$msg = "Template not found: {$templateName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateName}");
 		}
 		$fg = $template->fieldgroup;
 		$names = array_map('trim', explode(',', $orderStr));
@@ -80,6 +80,10 @@ final class TemplateFieldsReorderCommand extends Command
 			if ($f) {
 				$valid[] = $n;
 			}
+		}
+
+		if ($valid === []) {
+			return $this->failCommand($output, $asJson, 'NO_MATCHING_FIELDS', "None of the specified fields are attached to template '{$templateName}'.");
 		}
 
 		$result = ['template' => $templateName, 'order' => $valid, 'dryRun' => $dryRun];
@@ -96,8 +100,6 @@ final class TemplateFieldsReorderCommand extends Command
 			if (!$f) {
 				continue;
 			}
-			$fg->remove($f);
-			$fg->add($f);
 			$first = $fg->first();
 			if ($first && $first !== $f) {
 				$fg->insertBefore($f, $first);

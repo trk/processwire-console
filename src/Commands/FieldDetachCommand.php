@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\warning;
@@ -35,8 +34,10 @@ final class FieldDetachCommand extends Command
 	{
 		$fieldName = $input->getOption('field');
 		$asJson = (bool) $input->getOption('json');
+		$dryRun = (bool) $input->getOption('dry-run');
+		$force = (bool) $input->getOption('force');
 
-		if (!$fieldName && !$asJson) {
+		if (!$fieldName && $this->canPrompt($input, $asJson, $force)) {
 			$fieldName = $this->searchField('Select the field to detach');
 			if ($fieldName === '') {
 				return Command::SUCCESS;
@@ -44,19 +45,22 @@ final class FieldDetachCommand extends Command
 		}
 
 		$templateName = $input->getOption('template');
-		if (!$templateName && !$asJson) {
+		if (!$templateName && $this->canPrompt($input, $asJson, $force)) {
 			$templateName = $this->searchTemplate('Select the template to detach from');
 			if ($templateName === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		$dryRun = (bool) $input->getOption('dry-run');
-		$force = (bool) $input->getOption('force');
-
 		if (!$fieldName || !$templateName) {
-			$msg = 'Provide --field and --template.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --field and --template.');
+		}
+
+		if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $fieldName) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_FIELD', "Invalid field name: {$fieldName}");
+		}
+		if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $templateName) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_TEMPLATE', "Invalid template name: {$templateName}");
 		}
 
 		$fields = \ProcessWire\wire('fields');
@@ -64,12 +68,17 @@ final class FieldDetachCommand extends Command
 		$field = $fields->get((string) $fieldName);
 		$template = $templates->get((string) $templateName);
 		if (!$field || !$field->id) {
-			$msg = "Field not found: {$fieldName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Field not found: {$fieldName}");
 		}
 		if (!$template || !$template->id) {
-			$msg = "Template not found: {$templateName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateName}");
+		}
+
+		if ((((int) $template->flags) & \ProcessWire\Template::flagSystem) !== 0) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$templateName}' is a system template and its core fields cannot be detached via CLI.");
+		}
+		if ((((int) $field->flags) & \ProcessWire\Field::flagPermanent) !== 0) {
+			return $this->failCommand($output, $asJson, 'PERMANENT_FIELD', "Field '{$fieldName}' is marked permanent and cannot be detached.");
 		}
 
 		$fg = $template->fieldgroup;
@@ -83,8 +92,8 @@ final class FieldDetachCommand extends Command
 		}
 
 		if (!$force && !$dryRun) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run field:detach non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run field:detach non-interactively.');
 			}
 			if (!confirm("Detach field '{$fieldName}' from template '{$templateName}'?", default: false)) {
 				note('Aborted.');
@@ -101,8 +110,12 @@ final class FieldDetachCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		$fg->remove($field);
-		$fg->save();
+		try {
+			$fg->remove($field);
+			$fg->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'DETACH_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['detached' => true]);

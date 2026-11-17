@@ -6,6 +6,7 @@ namespace Totoglu\Console\Commands;
 
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\table;
@@ -19,7 +20,7 @@ final class RoleListCommand extends Command
 		$this
 			->setName('role:list')
 			->setDescription('List all roles in ProcessWire.')
-			->addOption('json', null, \Symfony\Component\Console\Input\InputOption::VALUE_NONE, 'JSON output');
+			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
@@ -31,16 +32,19 @@ final class RoleListCommand extends Command
 		foreach ($roles as $role) {
 			$permissions = [];
 			foreach ($role->permissions as $p) {
-				$permissions[] = $p->name;
+				$permissions[] = (string) $p->name;
 			}
-			$items[] = ['id' => $role->id, 'name' => $role->name, 'permissions' => $permissions];
+			$items[] = ['id' => (int) $role->id, 'name' => (string) $role->name, 'permissions' => $permissions];
 		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, ['items' => $items, 'total' => count($items)]);
 		}
 
-		$tableData = array_map(static fn(array $r): array => [$r['id'], $r['name'], implode(', ', $r['permissions'])], $items);
+		$tableData = array_map(
+			static fn(array $r): array => [(string) $r['id'], $r['name'], implode(', ', $r['permissions'])],
+			$items
+		);
 		table(['ID', 'Name', 'Permissions'], $tableData);
 
 		return Command::SUCCESS;

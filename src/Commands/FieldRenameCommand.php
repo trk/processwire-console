@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
@@ -35,14 +34,14 @@ final class FieldRenameCommand extends Command
 		$new = $input->getOption('new-name');
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$old && !$asJson) {
+		if (!$old && $this->canPrompt($input, $asJson)) {
 			$old = $this->searchField('Select the field to rename');
 			if ($old === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$new && !$asJson) {
+		if (!$new && $this->canPrompt($input, $asJson)) {
 			$new = text(
 				label: 'Enter the new field name',
 				required: true,
@@ -53,20 +52,26 @@ final class FieldRenameCommand extends Command
 		$dryRun = (bool) $input->getOption('dry-run');
 
 		if (!$old || !$new) {
-			$msg = 'Provide --name and --new-name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --name and --new-name.');
+		}
+
+		if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $old) !== 1 || preg_match('/^[a-z_][a-z0-9_]*$/', (string) $new) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid field name format: '{$new}'. Must match /^[a-z_][a-z0-9_]*$/.");
 		}
 
 		$fields = \ProcessWire\wire('fields');
 		$f = $fields->get((string) $old);
 		if (!$f || !$f->id) {
-			$msg = "Field not found: {$old}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Field not found: {$old}");
 		}
+		$protectedFlags = \ProcessWire\Field::flagSystem | \ProcessWire\Field::flagPermanent | \ProcessWire\Field::flagGlobal;
+		if ((((int) $f->flags) & $protectedFlags) !== 0 || (string) $f->name === 'title') {
+			return $this->failCommand($output, $asJson, 'SYSTEM_FIELD', "Field '{$old}' is a protected core/global field and cannot be renamed.");
+		}
+
 		$existingNew = $fields->get((string) $new);
 		if ($existingNew && $existingNew->id) {
-			$msg = "A field named '{$new}' already exists.";
-			return $asJson ? $this->outputJsonError($output, 'ALREADY_EXISTS', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "A field named '{$new}' already exists.");
 		}
 
 		$result = ['old' => $old, 'new' => $new, 'dryRun' => $dryRun];
@@ -79,7 +84,7 @@ final class FieldRenameCommand extends Command
 		}
 
 		$f->name = (string) $new;
-		$f->save();
+		$fields->save($f);
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['renamed' => true]);

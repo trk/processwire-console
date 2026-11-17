@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 
@@ -30,54 +29,59 @@ final class RoleGrantCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$roleName = $input->getOption('role') ? (string) $input->getOption('role') : '';
-		$permName = (string) $input->getOption('permission');
+		$roleName = $input->getOption('role') ? trim((string) $input->getOption('role')) : '';
+		$permName = $input->getOption('permission') ? trim((string) $input->getOption('permission')) : '';
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$roleName && !$asJson) {
+		if ($roleName === '' && $this->canPrompt($input, $asJson)) {
 			$roleName = $this->searchRole('Select a role');
 			if ($roleName === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$permName && !$asJson && $roleName) {
+		if ($permName === '' && $roleName !== '' && $this->canPrompt($input, $asJson)) {
 			$permName = $this->searchPermission("Select a permission to grant to {$roleName}");
 			if ($permName === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$roleName || !$permName) {
-			$msg = 'Provide --role and --permission.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($roleName === '' || $permName === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --role and --permission.');
 		}
 
-		$roles = \ProcessWire\wire('roles');
-		$permissions = \ProcessWire\wire('permissions');
-		$role = $roles->get($roleName);
-		$permission = $permissions->get($permName);
-		if (!$role || !$role->id) {
-			$msg = "Role not found: {$roleName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		$role = $this->findNamedSystemPage('roles', $roleName);
+		if (!($role instanceof \ProcessWire\Role) || !$role->id) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Role not found: {$roleName}");
 		}
-		if (!$permission || !$permission->id) {
-			$msg = "Permission not found: {$permName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+
+		if ((string) $role->name === 'superuser') {
+			return $this->failCommand($output, $asJson, 'SYSTEM_ROLE_PROTECTED', "Refusing to modify permissions on the built-in 'superuser' role.");
+		}
+
+		$permission = $this->findNamedSystemPage('permissions', $permName);
+		if (!($permission instanceof \ProcessWire\Permission) || !$permission->id) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Permission not found: {$permName}");
+		}
+
+		if ((string) $role->name === 'guest' && (string) $permission->name !== 'page-view') {
+			return $this->failCommand($output, $asJson, 'GUEST_ROLE_RESTRICTED', "Refusing to grant '{$permission->name}' to the 'guest' role.");
 		}
 
 		$already = $role->hasPermission($permission);
-		$result = ['role' => $roleName, 'permission' => $permName, 'already' => $already, 'dryRun' => $dryRun];
+		$result = ['role' => (string) $role->name, 'permission' => (string) $permission->name, 'already' => $already, 'dryRun' => $dryRun];
 		if ($dryRun) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $result);
 			}
-			note("Dry-run: would grant '{$permName}' to role '{$roleName}'.");
+			note("Dry-run: would grant '{$permission->name}' to role '{$role->name}'.");
 			return Command::SUCCESS;
 		}
 
 		if (!$already) {
+			$role->of(false);
 			$role->addPermission($permission);
 			$role->save();
 		}
@@ -86,7 +90,7 @@ final class RoleGrantCommand extends Command
 			return $this->outputJsonSuccess($output, $result + ['granted' => true]);
 		}
 
-		info("Granted '{$permName}' to role '{$roleName}'.");
+		info("Granted '{$permission->name}' to role '{$role->name}'.");
 		return Command::SUCCESS;
 	}
 }

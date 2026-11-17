@@ -10,10 +10,10 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\text;
+use function Laravel\Prompts\textarea;
 
 final class PageCreateCommand extends Command
 {
@@ -36,8 +36,8 @@ final class PageCreateCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$parentArg = (string) $input->getOption('parent');
-		$templateName = (string) $input->getOption('template');
+		$parentArg = trim((string) $input->getOption('parent'));
+		$templateName = trim((string) $input->getOption('template'));
 		$name = $input->getOption('name') ? (string) $input->getOption('name') : null;
 		$title = $input->getOption('title') ? (string) $input->getOption('title') : null;
 		$unpublished = (bool) $input->getOption('unpublished');
@@ -49,23 +49,23 @@ final class PageCreateCommand extends Command
 		$templates = \ProcessWire\wire('templates');
 		$sanitizer = \ProcessWire\wire('sanitizer');
 
-		if (($wantInteractive || !$parentArg || !$templateName) && $input->isInteractive() && !$asJson) {
-			if (!$templateName) {
+		if (($wantInteractive || $parentArg === '' || $templateName === '') && $this->canPrompt($input, $asJson)) {
+			if ($templateName === '') {
 				$templateName = $this->searchTemplate('Select template');
 				if ($templateName === '') {
 					return Command::SUCCESS;
 				}
 			}
-			if (!$parentArg) {
+			if ($parentArg === '') {
 				$parentArg = (string) $this->searchPage('Select parent page');
 				if ($parentArg === '') {
 					return Command::SUCCESS;
 				}
 			}
-			if (!$title) {
+			if ($title === null) {
 				$title = text('Title', required: false);
 			}
-			if (!$name) {
+			if ($name === null) {
 				$defaultName = $title ? $sanitizer->pageName($title, true) : null;
 				$name = text('Name', default: $defaultName ?? '', required: false);
 				if ($name === '' && $defaultName) {
@@ -74,29 +74,35 @@ final class PageCreateCommand extends Command
 			}
 		}
 
-		if (!$parentArg || !$templateName) {
-			$msg = 'Provide --parent and --template.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($parentArg === '' || $templateName === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --parent and --template.');
 		}
 
-		$parent = is_numeric($parentArg) ? $pages->get((int) $parentArg) : $pages->get($parentArg);
-		if (!$parent || !$parent->id) {
-			$msg = "Parent not found: {$parentArg}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		if (preg_match('/^[A-Za-z0-9_-]+$/', $templateName) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_TEMPLATE', "Invalid template name: {$templateName}");
+		}
+
+		$parent = ctype_digit($parentArg)
+			? $this->resolvePage($parentArg, null)
+			: $this->resolvePage(null, $parentArg);
+		if ($parent === null) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Parent not found: {$parentArg}");
 		}
 
 		$template = $templates->get($templateName);
 		if (!$template || !$template->id) {
-			$msg = "Template not found: {$templateName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateName}");
 		}
 
 		if (!$name && $title) {
 			$name = $sanitizer->pageName($title, true);
 		}
-
 		if (!$name) {
 			$name = 'page-' . date('Ymd-His');
+		}
+		$name = (string) $sanitizer->pageName($name, true);
+		if ($name === '') {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', 'Page name sanitized to an empty string.');
 		}
 
 		$result = [
@@ -116,21 +122,21 @@ final class PageCreateCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		$page = new \ProcessWire\Page();
-		$page->template = $template;
+		$page = $pages->newPage(['template' => $template]);
+		$page->of(false);
 		$page->parent = $parent;
 		$page->name = $name;
-		if ($title) {
+		if ($title !== null && $title !== '') {
 			$page->title = $title;
 		}
 		if ($unpublished) {
 			$page->addStatus(\ProcessWire\Page::statusUnpublished);
 		}
-		if (($wantInteractive || (!$input->getOption('title') && !$input->getOption('name'))) && $input->isInteractive() && !$asJson) {
+		if (($wantInteractive || (!$input->getOption('title') && !$input->getOption('name'))) && $this->canPrompt($input, $asJson)) {
 			$fill = confirm('Fill template fields now?', default: false);
 			if ($fill) {
 				foreach ($template->fieldgroup as $f) {
-					$fname = $f->name;
+					$fname = (string) $f->name;
 					if ($fname === 'title') {
 						continue;
 					}
@@ -139,12 +145,12 @@ final class PageCreateCommand extends Command
 					$desc = $f->description ?: '';
 					$prompt = trim($label . ($desc ? " — {$desc}" : ''));
 					$val = null;
-					if ($ftype instanceof \ProcessWire\FieldtypeText) {
+					if ($ftype instanceof \ProcessWire\FieldtypeTextarea) {
+						$val = textarea($prompt, required: false);
+						$val = $sanitizer->textarea($val);
+					} elseif ($ftype instanceof \ProcessWire\FieldtypeText) {
 						$val = text($prompt, required: false);
 						$val = $sanitizer->text($val);
-					} elseif ($ftype instanceof \ProcessWire\FieldtypeTextarea) {
-						$val = text($prompt, required: false);
-						$val = $sanitizer->textarea($val);
 					}
 					if ($val !== null && $val !== '') {
 						$page->set($fname, $val);
@@ -152,7 +158,12 @@ final class PageCreateCommand extends Command
 				}
 			}
 		}
-		$page->save();
+
+		try {
+			$page->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		$result['id'] = $page->id;
 		$result['url'] = $page->url;
@@ -161,8 +172,7 @@ final class PageCreateCommand extends Command
 			return $this->outputJsonSuccess($output, $result);
 		}
 
-		info("Created page #{$page->id} at {$page->url} (template: {$templateName})");
-
+		info("Created page #{$page->id} at {$page->url} (" . ($unpublished ? 'unpublished' : 'published') . ').');
 		return Command::SUCCESS;
 	}
 }

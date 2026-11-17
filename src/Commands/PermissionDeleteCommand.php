@@ -10,13 +10,32 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 
 final class PermissionDeleteCommand extends Command
 {
 	use InteractWithProcessWire;
+
+	/**
+	 * Built-in core permissions that must not be deleted.
+	 *
+	 * @var list<string>
+	 */
+	private const SYSTEM_PERMISSIONS = [
+		'page-view',
+		'page-edit',
+		'page-add',
+		'page-create',
+		'page-delete',
+		'page-move',
+		'page-sort',
+		'page-template',
+		'page-lock',
+		'profile-edit',
+		'user-admin',
+		'user-admin-all',
+	];
 
 	protected function configure(): void
 	{
@@ -31,61 +50,61 @@ final class PermissionDeleteCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$permName = $input->getOption('name') ? (string) $input->getOption('name') : '';
+		$permName = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
-		if (!$permName && !$asJson) {
+		if ($permName === '' && $this->canPrompt($input, $asJson, $force)) {
 			$permName = $this->searchPermission('Select a permission to delete');
 			if ($permName === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$permName) {
-			$msg = 'Provide --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($permName === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide --name.');
 		}
 
-		$permissions = \ProcessWire\wire('permissions');
-		$permission = $permissions->get($permName);
-		if (!$permission || !$permission->id) {
-			$msg = "Permission not found: {$permName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		$permission = $this->findNamedSystemPage('permissions', $permName);
+		if (!($permission instanceof \ProcessWire\Permission) || !$permission->id) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Permission not found: {$permName}");
+		}
+
+		if (in_array((string) $permission->name, self::SYSTEM_PERMISSIONS, true)) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_PERMISSION_PROTECTED', "Refusing to delete core permission '{$permission->name}'.");
 		}
 
 		if (!$force && !$dryRun) {
-			if ($asJson) {
-				return $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', 'Use --force to run permission:delete non-interactively with --json.');
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run permission:delete non-interactively.');
 			}
-			if (!confirm("Delete permission '{$permName}'?", false)) {
+			if (!confirm("Delete permission '{$permission->name}'?", false)) {
 				note('Aborted.');
 				return Command::SUCCESS;
 			}
 		}
 
-		$result = ['name' => $permName, 'dryRun' => $dryRun];
+		$result = ['name' => (string) $permission->name, 'dryRun' => $dryRun];
 		if ($dryRun) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $result);
 			}
-			note("Dry-run: would delete permission '{$permName}'.");
+			note("Dry-run: would delete permission '{$permission->name}'.");
 			return Command::SUCCESS;
 		}
 
 		try {
-			$permissions->delete($permission);
+			\ProcessWire\wire('permissions')->delete($permission);
 		} catch (\Throwable $e) {
-			$msg = "Delete failed for permission '{$permName}': " . $e->getMessage();
-			return $asJson ? $this->outputJsonError($output, 'DELETE_FAILED', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'DELETE_FAILED', "Delete failed for permission '{$permission->name}': " . $e->getMessage());
 		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['deleted' => true]);
 		}
 
-		info("Deleted permission '{$permName}'.");
+		info("Deleted permission '{$permission->name}'.");
 		return Command::SUCCESS;
 	}
 }

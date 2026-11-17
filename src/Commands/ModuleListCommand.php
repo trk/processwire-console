@@ -40,8 +40,10 @@ final class ModuleListCommand extends Command
 		$filtered = [];
 
 		foreach ($installed as $name => $module) {
-			$info = $modules->getModuleInfo($name);
-			$isCore = str_contains($modules->getModuleFile($name), '/wire/modules/');
+			$modName = (string) $name;
+			$info = $modules->getModuleInfo($modName);
+			$moduleFile = str_replace('\\', '/', (string) $modules->getModuleFile($modName));
+			$isCore = str_contains($moduleFile, '/wire/modules/');
 
 			if ($coreOnly && !$isCore) {
 				continue;
@@ -50,14 +52,15 @@ final class ModuleListCommand extends Command
 				continue;
 			}
 
-			if ($search && (stripos($name, (string) $search) === false && stripos((string) ($info['title'] ?? ''), (string) $search) === false)) {
+			if ($search && (stripos($modName, (string) $search) === false && stripos((string) ($info['title'] ?? ''), (string) $search) === false)) {
 				continue;
 			}
 
-			$filtered[$name] = $info;
+			$info['_isCore'] = $isCore;
+			$filtered[$modName] = $info;
 		}
 
-		if (empty($filtered)) {
+		if ($filtered === []) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0]);
 			}
@@ -68,11 +71,11 @@ final class ModuleListCommand extends Command
 		if ($asJson) {
 			$items = [];
 			foreach ($filtered as $name => $info) {
-				$isCore = str_contains($modules->getModuleFile($name), '/wire/modules/');
+				$isCore = (bool) ($info['_isCore'] ?? false);
 				$items[] = [
 					'name' => $name,
 					'title' => (string) ($info['title'] ?? ''),
-					'version' => $modules->formatVersion($info['version'] ?? 0),
+					'version' => (string) $modules->formatVersion($info['version'] ?? 0),
 					'type' => $isCore ? 'core' : 'site',
 					'summary' => (string) ($info['summary'] ?? ''),
 				];
@@ -82,9 +85,9 @@ final class ModuleListCommand extends Command
 
 		$rows = [];
 		foreach ($filtered as $name => $info) {
-			$isCore = str_contains($modules->getModuleFile($name), '/wire/modules/');
+			$isCore = (bool) ($info['_isCore'] ?? false);
 			$type = $isCore ? 'Core' : 'Site';
-			$versionStr = $modules->formatVersion($info['version'] ?? 0);
+			$versionStr = (string) $modules->formatVersion($info['version'] ?? 0);
 			$rows[] = [
 				$name,
 				mb_strimwidth((string) ($info['title'] ?? '-'), 0, 35, '...'),

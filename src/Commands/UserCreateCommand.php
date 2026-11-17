@@ -10,9 +10,11 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\multiselect;
+use function Laravel\Prompts\note;
 use function Laravel\Prompts\password;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\text;
@@ -48,7 +50,7 @@ final class UserCreateCommand extends Command
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
 
-		if (($wantInteractive || !$username || !$email) && $input->isInteractive() && !$force && !$asJson) {
+		if (($wantInteractive || !$username || !$email) && $this->canPrompt($input, $asJson, $force)) {
 			if (!$username) {
 				$username = text('Username', required: true);
 			}
@@ -58,17 +60,17 @@ final class UserCreateCommand extends Command
 					required: true,
 					validate: function (string $value): ?string {
 						$v = \ProcessWire\wire('sanitizer')->email($value);
-						return ($v && filter_var($v, FILTER_VALIDATE_EMAIL)) ? null : 'Invalid email format';
+						return ($v !== '' && filter_var($v, FILTER_VALIDATE_EMAIL) !== false) ? null : 'Invalid email format';
 					}
 				);
 			}
 			$allRoles = [];
 			foreach (\ProcessWire\wire('roles') as $r) {
-				$allRoles[] = $r->name;
+				$allRoles[] = (string) $r->name;
 			}
-			$defaultRoles = $roles ? array_values($roles) : ['guest'];
+			$defaultRoles = $roles !== [] ? array_values(array_map('strval', $roles)) : ['guest'];
 			$sel = multiselect('Assign roles', $allRoles, default: $defaultRoles);
-			$roles = $sel ?: ['guest'];
+			$roles = $sel !== [] ? array_values(array_map('strval', $sel)) : ['guest'];
 			if (!$passOpt) {
 				$p1 = password('Password (leave empty to auto-generate)', required: false);
 				if ($p1 !== '') {
@@ -81,8 +83,7 @@ final class UserCreateCommand extends Command
 						$attempts++;
 					}
 					if ($p1 !== $p2) {
-						$msg = 'Password confirmation failed.';
-						return $asJson ? $this->outputJsonError($output, 'PASSWORD_MISMATCH', $msg) : (error($msg) ?? Command::FAILURE);
+						return $this->failCommand($output, $asJson, 'PASSWORD_MISMATCH', 'Password confirmation failed.');
 					}
 					$passOpt = $p1;
 				}
@@ -90,37 +91,53 @@ final class UserCreateCommand extends Command
 		}
 
 		if (!$username || !$email) {
-			$msg = 'Provide username and email (via --name/--email or arguments).';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide username and email (via --name/--email or arguments).');
 		}
 
 		$san = \ProcessWire\wire('sanitizer');
-		$emailSan = $san->email((string) $email);
-		if (!$emailSan || !filter_var($emailSan, FILTER_VALIDATE_EMAIL)) {
-			$msg = 'Invalid email address.';
-			return $asJson ? $this->outputJsonError($output, 'INVALID_EMAIL', $msg) : (error($msg) ?? Command::FAILURE);
+		$rawUsername = trim((string) $username);
+		$cleanUsername = (string) $san->pageName($rawUsername, true);
+		if ($cleanUsername === '' || $cleanUsername !== strtolower($rawUsername) || ctype_digit($cleanUsername)) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid username '{$rawUsername}'. Must be a valid non-numeric ProcessWire page name.");
+		}
+
+		$emailSan = (string) $san->email((string) $email);
+		if ($emailSan === '' || filter_var($emailSan, FILTER_VALIDATE_EMAIL) === false) {
+			return $this->failCommand($output, $asJson, 'INVALID_EMAIL', 'Invalid email address.');
 		}
 		$email = $emailSan;
-		$password = $passOpt ?: bin2hex(random_bytes(8));
+		$password = is_string($passOpt) && $passOpt !== '' ? $passOpt : bin2hex(random_bytes(8));
 
-		$existing = \ProcessWire\wire('users')->get((string) $username);
-		if ($existing && $existing->id) {
-			$msg = "User '{$username}' already exists.";
-			return $asJson ? $this->outputJsonError($output, 'ALREADY_EXISTS', $msg) : (error($msg) ?? Command::FAILURE);
+		$normalizedRoles = array_values(array_map(static fn(mixed $r): string => strtolower(trim((string) $r)), $roles));
+		if (in_array('superuser', $normalizedRoles, true) && !$force) {
+			if ($asJson || !$input->isInteractive()) {
+				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Assigning the superuser role non-interactively requires --force.');
+			}
+			if (!confirm("Grant 'superuser' privileges to new user '{$cleanUsername}'?", default: false)) {
+				note('Aborted.');
+				return Command::SUCCESS;
+			}
 		}
 
-		$u = \ProcessWire\wire('users')->add((string) $username);
+		$existing = $this->findNamedSystemPage('users', $cleanUsername);
+		if ($existing !== null) {
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "User '{$cleanUsername}' already exists.");
+		}
+
+		$u = \ProcessWire\wire('users')->add($cleanUsername);
+		$u->of(false);
 		$u->email = $email;
 		$u->pass = $password;
 
 		$assignedRoles = [];
 		foreach ($roles as $roleName) {
-			$role = \ProcessWire\wire('roles')->get((string) $roleName);
-			if ($role && $role->id) {
+			$roleNameStr = trim((string) $roleName);
+			$role = $this->findNamedSystemPage('roles', $roleNameStr);
+			if ($role instanceof \ProcessWire\Role && $role->id) {
 				$u->addRole($role);
-				$assignedRoles[] = (string) $roleName;
+				$assignedRoles[] = (string) $role->name;
 			} elseif (!$asJson) {
-				warning("Role '{$roleName}' not found, skipping.");
+				warning("Role '{$roleNameStr}' not found, skipping.");
 			}
 		}
 
@@ -128,16 +145,16 @@ final class UserCreateCommand extends Command
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, [
-				'id' => $u->id,
-				'name' => $u->name,
+				'id' => (int) $u->id,
+				'name' => (string) $u->name,
 				'email' => $email,
 				'roles' => $assignedRoles,
 			]);
 		}
 
-		info("User '{$username}' created successfully.");
+		info("User '{$u->name}' created successfully.");
 		table(['Username', 'Email', 'Password', 'Roles'], [
-			[$username, $email, $password, implode(', ', $assignedRoles)],
+			[(string) $u->name, $email, $password, implode(', ', $assignedRoles)],
 		]);
 
 		return Command::SUCCESS;

@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\select;
@@ -36,7 +35,7 @@ final class FieldAttachCommand extends Command
 		$fieldName = $input->getOption('field');
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$fieldName && !$asJson) {
+		if (!$fieldName && $this->canPrompt($input, $asJson)) {
 			$fieldName = $this->searchField('Select the field to attach');
 			if ($fieldName === '') {
 				return Command::SUCCESS;
@@ -44,7 +43,7 @@ final class FieldAttachCommand extends Command
 		}
 
 		$templateName = $input->getOption('template');
-		if (!$templateName && !$asJson) {
+		if (!$templateName && $this->canPrompt($input, $asJson)) {
 			$templateName = $this->searchTemplate('Select the template to attach to');
 			if ($templateName === '') {
 				return Command::SUCCESS;
@@ -55,8 +54,8 @@ final class FieldAttachCommand extends Command
 		$position = $input->getOption('position');
 		if ($afterOpt) {
 			$position = 'after=' . $afterOpt;
-		} elseif (!$position && !$asJson && $input->isInteractive()) {
-			$position = select(
+		} elseif (!$position && $this->canPrompt($input, $asJson)) {
+			$position = (string) select(
 				label: 'Where should this field be placed?',
 				options: ['last' => 'At the end', 'first' => 'At the beginning'],
 				default: 'last'
@@ -68,8 +67,14 @@ final class FieldAttachCommand extends Command
 		$dryRun = (bool) $input->getOption('dry-run');
 
 		if (!$fieldName || !$templateName) {
-			$msg = 'Provide --field and --template.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_OPTIONS', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --field and --template.');
+		}
+
+		if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $fieldName) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_FIELD', "Invalid field name: {$fieldName}");
+		}
+		if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $templateName) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_TEMPLATE', "Invalid template name: {$templateName}");
 		}
 
 		$fields = \ProcessWire\wire('fields');
@@ -77,12 +82,10 @@ final class FieldAttachCommand extends Command
 		$field = $fields->get((string) $fieldName);
 		$template = $templates->get((string) $templateName);
 		if (!$field || !$field->id) {
-			$msg = "Field not found: {$fieldName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Field not found: {$fieldName}");
 		}
 		if (!$template || !$template->id) {
-			$msg = "Template not found: {$templateName}";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateName}");
 		}
 
 		$fg = $template->fieldgroup;
@@ -115,7 +118,7 @@ final class FieldAttachCommand extends Command
 			}
 		} elseif ($position === 'first') {
 			$first = $fg->first();
-			if ($first) {
+			if ($first && $first !== $field) {
 				$fg->insertBefore($field, $first);
 			}
 		}

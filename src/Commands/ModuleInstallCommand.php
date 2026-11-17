@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 
@@ -29,24 +28,31 @@ final class ModuleInstallCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$name = $input->getOption('name') ? (string) $input->getOption('name') : '';
+		$name = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$name && !$asJson) {
+		if ($name === '' && $this->canPrompt($input, $asJson)) {
 			$name = $this->searchInstallableModule('Select a module to install');
-			if (empty($name)) {
+			if ($name === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$name) {
-			$msg = 'Provide --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($name === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide --name.');
+		}
+
+		if (!$this->isValidIdentifier($name)) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid module class name '{$name}'.");
 		}
 
 		$modules = \ProcessWire\wire('modules');
 		$installed = $modules->isInstalled($name);
+		if (!$installed && !$modules->getModuleFile($name)) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Module not found: {$name}");
+		}
+
 		$result = ['name' => $name, 'alreadyInstalled' => $installed, 'dryRun' => $dryRun];
 
 		if ($dryRun) {
@@ -71,8 +77,7 @@ final class ModuleInstallCommand extends Command
 			}
 			$modules->install($name);
 		} catch (\Throwable $e) {
-			$msg = "Install failed for module '{$name}': " . $e->getMessage();
-			return $asJson ? $this->outputJsonError($output, 'INSTALL_FAILED', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'INSTALL_FAILED', "Install failed for module '{$name}': " . $e->getMessage());
 		}
 
 		if ($asJson) {

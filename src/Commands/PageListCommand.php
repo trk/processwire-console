@@ -58,7 +58,7 @@ final class PageListCommand extends Command
 			$selectorParts[] = 'sort=' . ($desc ? '-' : '') . $safeSort;
 		}
 		if ($limit) {
-			$selectorParts[] = 'limit=' . max(1, (int) $limit);
+			$selectorParts[] = 'limit=' . max(1, min(500, (int) $limit));
 		}
 		if ($include) {
 			$safeInclude = $sanitizer->selectorValue((string) $include);
@@ -67,7 +67,11 @@ final class PageListCommand extends Command
 
 		$selector = implode(', ', $selectorParts);
 
-		$pages = \ProcessWire\wire('pages')->find($selector ?: 'limit=20, sort=-created');
+		try {
+			$pages = \ProcessWire\wire('pages')->find($selector ?: 'limit=20, sort=-created');
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'INVALID_SELECTOR', $e->getMessage());
+		}
 
 		if (!$pages->count()) {
 			if ($asJson) {
@@ -122,10 +126,10 @@ final class PageListCommand extends Command
 				$status[] = 'locked';
 			}
 			$rows[] = [
-				$page->id,
-				$page->path,
-				mb_strimwidth($page->title ?: $page->name, 0, 30, '...'),
-				$page->template->name,
+				(string) $page->id,
+				(string) $page->path,
+				mb_strimwidth((string) ($page->title ?: $page->name), 0, 30, '...'),
+				(string) $page->template->name,
 				implode('|', $status) ?: 'pub',
 				date('Y-m-d H:i', (int) $page->modified),
 			];

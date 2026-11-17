@@ -11,7 +11,6 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 
@@ -38,7 +37,7 @@ final class TemplateDeleteCommand extends Command
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
-		if (!$name && !$asJson) {
+		if (!$name && $this->canPrompt($input, $asJson, $force)) {
 			$name = $this->searchTemplate('Select the template to delete');
 			if ($name === '') {
 				return Command::SUCCESS;
@@ -46,54 +45,72 @@ final class TemplateDeleteCommand extends Command
 		}
 
 		if (!$name) {
-			$msg = 'Provide template name via argument or --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide template name via argument or --name.');
+		}
+
+		if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $name) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid template name: '{$name}'.");
 		}
 
 		$templates = \ProcessWire\wire('templates');
 		$template = $templates->get((string) $name);
 
 		if (!$template || !$template->id) {
-			$msg = "Template '{$name}' not found.";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template '{$name}' not found.");
 		}
 
 		if ($template->flags & \ProcessWire\Template::flagSystem) {
-			$msg = "Template '{$name}' is a system template and cannot be deleted.";
-			return $asJson ? $this->outputJsonError($output, 'SYSTEM_TEMPLATE', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$name}' is a system template and cannot be deleted.");
 		}
 
-		$result = ['name' => $name, 'dryRun' => $dryRun];
+		$safeTplSelector = \ProcessWire\wire('sanitizer')->selectorValue((string) $template->name);
+		$pageCount = (int) \ProcessWire\wire('pages')->count("template={$safeTplSelector}, include=all");
+		if ($pageCount > 0) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'TEMPLATE_IN_USE',
+				"Template '{$template->name}' cannot be deleted because {$pageCount} page(s) still use it."
+			);
+		}
+
+		$result = ['name' => (string) $template->name, 'dryRun' => $dryRun];
 		if ($dryRun) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $result);
 			}
-			note("Dry-run: would delete template '{$name}' and its associated fieldgroup.");
+			note("Dry-run: would delete template '{$template->name}' and its associated fieldgroup.");
 			return Command::SUCCESS;
 		}
 
 		if (!$force && (!$input->isInteractive() || $asJson)) {
-			$msg = "Deleting template '{$name}' in non-interactive or JSON mode requires --force.";
-			return $asJson ? $this->outputJsonError($output, 'CONFIRMATION_REQUIRED', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', "Deleting template '{$template->name}' in non-interactive or JSON mode requires --force.");
 		}
 
-		if ($force || confirm("Are you sure you want to delete template '{$name}' and its associated fieldgroup?", default: false)) {
+		if ($force || confirm("Are you sure you want to delete template '{$template->name}' and its associated fieldgroup?", default: false)) {
 			try {
 				$fg = $template->fieldgroup;
 				$templates->delete($template);
 				if ($fg && $fg->id) {
-					\ProcessWire\wire('fieldgroups')->delete($fg);
+					$sharedCount = 0;
+					foreach ($templates as $otherTpl) {
+						if ((int) $otherTpl->fieldgroup_id === (int) $fg->id) {
+							$sharedCount++;
+						}
+					}
+					if ($sharedCount === 0) {
+						\ProcessWire\wire('fieldgroups')->delete($fg);
+					}
 				}
 
 				if ($asJson) {
 					return $this->outputJsonSuccess($output, $result + ['deleted' => true]);
 				}
 
-				info("Template '{$name}' deleted.");
+				info("Template '{$result['name']}' deleted.");
 				return Command::SUCCESS;
 			} catch (\Throwable $e) {
-				$msg = 'Error deleting template: ' . $e->getMessage();
-				return $asJson ? $this->outputJsonError($output, 'DELETE_FAILED', $msg) : (error($msg) ?? Command::FAILURE);
+				return $this->failCommand($output, $asJson, 'DELETE_FAILED', 'Error deleting template: ' . $e->getMessage());
 			}
 		}
 

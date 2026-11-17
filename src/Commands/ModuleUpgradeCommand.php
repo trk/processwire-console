@@ -9,7 +9,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 
 final class ModuleUpgradeCommand extends Command
@@ -27,24 +26,31 @@ final class ModuleUpgradeCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$name = $input->getOption('name') ? (string) $input->getOption('name') : '';
+		$name = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
 		$asJson = (bool) $input->getOption('json');
 
-		if (!$name && !$asJson) {
+		if ($name === '' && $this->canPrompt($input, $asJson)) {
 			$name = $this->searchInstalledModule('Select a module to upgrade');
-			if (empty($name)) {
+			if ($name === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$name) {
-			$msg = 'Provide --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+		if ($name === '') {
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide --name.');
+		}
+
+		if (!$this->isValidIdentifier($name)) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid module class name '{$name}'.");
 		}
 
 		$modules = \ProcessWire\wire('modules');
 		$modules->refresh();
 		$installed = $modules->isInstalled($name);
+
+		if (!$installed && !$modules->getModuleFile($name)) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Module not found: {$name}");
+		}
 
 		if ($installed) {
 			try {
@@ -54,8 +60,7 @@ final class ModuleUpgradeCommand extends Command
 				// Loading an installed module after refresh triggers ProcessWire's native module version check and ___upgrade()
 				$modules->get($name);
 			} catch (\Throwable $e) {
-				$msg = "Upgrade step failed for '{$name}': " . $e->getMessage();
-				return $asJson ? $this->outputJsonError($output, 'UPGRADE_FAILED', $msg) : (error($msg) ?? Command::FAILURE);
+				return $this->failCommand($output, $asJson, 'UPGRADE_FAILED', "Upgrade step failed for '{$name}': " . $e->getMessage());
 			}
 		}
 

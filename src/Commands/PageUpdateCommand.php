@@ -10,16 +10,30 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
+use function Laravel\Prompts\textarea;
 use function Laravel\Prompts\warning;
 
 final class PageUpdateCommand extends Command
 {
 	use InteractWithProcessWire;
+
+	private const VALID_STATUSES = [
+		'publish',
+		'published',
+		'unpublish',
+		'unpublished',
+		'hide',
+		'hidden',
+		'show',
+		'lock',
+		'locked',
+		'unlock',
+		'unlocked',
+	];
 
 	protected function configure(): void
 	{
@@ -32,7 +46,7 @@ final class PageUpdateCommand extends Command
 			->addOption('name', null, InputOption::VALUE_OPTIONAL, 'New URL-safe page name')
 			->addOption('parent', null, InputOption::VALUE_OPTIONAL, 'New parent path or ID')
 			->addOption('template', null, InputOption::VALUE_OPTIONAL, 'New template name')
-			->addOption('set', null, InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Set field value as key=value (repeatable or comma-separated)')
+			->addOption('set', null, InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'Set field value as key=value (repeatable)')
 			->addOption('status', null, InputOption::VALUE_OPTIONAL, 'Optional status: published|unpublished|hidden|locked|unlocked|publish|unpublish|hide|show|lock|unlock')
 			->addOption('interactive', 'i', InputOption::VALUE_NONE, 'Prompt for page and field values')
 			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
@@ -42,86 +56,138 @@ final class PageUpdateCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$id = $input->getOption('id');
-		$path = $input->getOption('path');
+		$path = $input->getOption('path') !== null ? (string) $input->getOption('path') : null;
 		$titleOpt = $input->getOption('title') !== null ? (string) $input->getOption('title') : null;
 		$nameOpt = $input->getOption('name') !== null ? (string) $input->getOption('name') : null;
-		$parentOpt = $input->getOption('parent') !== null ? (string) $input->getOption('parent') : null;
-		$templateOpt = $input->getOption('template') !== null ? (string) $input->getOption('template') : null;
+		$parentOpt = $input->getOption('parent') !== null ? trim((string) $input->getOption('parent')) : null;
+		$templateOpt = $input->getOption('template') !== null ? trim((string) $input->getOption('template')) : null;
 		$setRaw = $input->getOption('set');
-		$statusOp = $input->getOption('status') ? strtolower((string) $input->getOption('status')) : '';
+		$statusOp = $input->getOption('status') ? strtolower(trim((string) $input->getOption('status'))) : '';
 		$wantInteractive = (bool) $input->getOption('interactive');
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 
-		if (($wantInteractive && $input->isInteractive() && !$asJson) && (!$id && !$path)) {
-			$path = (string) $this->searchPage('Select page to update');
-			if ($path === '') {
+		if ($statusOp !== '' && !in_array($statusOp, self::VALID_STATUSES, true)) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'INVALID_STATUS',
+				"Invalid --status '{$statusOp}'. Allowed values: " . implode(', ', self::VALID_STATUSES)
+			);
+		}
+
+		if ($wantInteractive && $this->canPrompt($input, $asJson) && !$id && !$path) {
+			$selectedId = (string) $this->searchPage('Select page to update');
+			if ($selectedId === '') {
 				return Command::SUCCESS;
 			}
+			$id = $selectedId;
 		}
 
 		if (!$id && !$path) {
-			$msg = 'Provide --id or --path.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_IDENTIFIER', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_IDENTIFIER', 'Provide --id or --path.');
 		}
 
-		$pages = \ProcessWire\wire('pages');
-		$page = $id ? $pages->get((int) $id) : $pages->get((string) $path);
-		if (!$page || !$page->id) {
-			$msg = 'Page not found.';
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+		$page = $this->resolvePage($id, $path);
+		if ($page === null) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'Page not found.');
+		}
+
+		if (
+			$page instanceof \ProcessWire\User
+			|| $page instanceof \ProcessWire\Role
+			|| $page instanceof \ProcessWire\Permission
+		) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'RBAC_PAGE_PROTECTED',
+				'Use user:update, role:*, or permission:* commands to modify users, roles, or permissions.'
+			);
 		}
 
 		$changes = $this->parseKeyValueSets($setRaw);
+		unset(
+			$changes['id'],
+			$changes['status'],
+			$changes['flags'],
+			$changes['pass'],
+			$changes['roles'],
+			$changes['permissions'],
+			$changes['parent'],
+			$changes['parent_id'],
+			$changes['template'],
+			$changes['templates_id']
+		);
 
 		if ($titleOpt !== null) {
 			$changes['title'] = $titleOpt;
 		}
 		if ($nameOpt !== null) {
-			$changes['name'] = $nameOpt;
+			$cleanPageName = (string) \ProcessWire\wire('sanitizer')->pageName($nameOpt, true);
+			if ($cleanPageName === '') {
+				return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid page name: '{$nameOpt}'.");
+			}
+			$changes['name'] = $cleanPageName;
+		}
+
+		$isProtected = $this->isProtectedSystemPage($page);
+		if ($isProtected) {
+			if (isset($changes['name']) || ($parentOpt !== null && $parentOpt !== '') || ($templateOpt !== null && $templateOpt !== '')) {
+				return $this->failCommand($output, $asJson, 'SYSTEM_PAGE_PROTECTED', "Page #{$page->id} ({$page->path}) is a system page; its name, parent, and template cannot be changed.");
+			}
+			if (in_array($statusOp, ['unpublish', 'unpublished', 'hide', 'hidden'], true)) {
+				return $this->failCommand($output, $asJson, 'SYSTEM_PAGE_PROTECTED', "Page #{$page->id} ({$page->path}) is a system page and cannot be unpublished or hidden.");
+			}
 		}
 
 		$newParent = null;
 		if ($parentOpt !== null && $parentOpt !== '') {
-			$newParent = is_numeric($parentOpt) ? $pages->get((int) $parentOpt) : $pages->get($parentOpt);
-			if (!$newParent || !$newParent->id) {
-				$msg = "Parent not found: {$parentOpt}";
-				return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			$newParent = ctype_digit($parentOpt)
+				? $this->resolvePage($parentOpt, null)
+				: $this->resolvePage(null, $parentOpt);
+			if ($newParent === null) {
+				return $this->failCommand($output, $asJson, 'NOT_FOUND', "Parent not found: {$parentOpt}");
+			}
+			if ((int) $newParent->id === (int) $page->id || $newParent->parents->has($page)) {
+				return $this->failCommand($output, $asJson, 'INVALID_PARENT', 'Cannot move a page into itself or one of its descendants.');
 			}
 		}
 
 		$newTemplate = null;
 		if ($templateOpt !== null && $templateOpt !== '') {
+			if (preg_match('/^[A-Za-z0-9_-]+$/', $templateOpt) !== 1) {
+				return $this->failCommand($output, $asJson, 'INVALID_TEMPLATE', "Invalid template name: {$templateOpt}");
+			}
 			$newTemplate = \ProcessWire\wire('templates')->get($templateOpt);
 			if (!$newTemplate || !$newTemplate->id) {
-				$msg = "Template not found: {$templateOpt}";
-				return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+				return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateOpt}");
 			}
 		}
 
-		if ($wantInteractive && $input->isInteractive() && !$asJson) {
+		if ($wantInteractive && $this->canPrompt($input, $asJson)) {
 			$statusChoices = ['none', 'publish', 'unpublish', 'hide', 'show', 'lock', 'unlock'];
-			if (!$statusOp) {
-				$sel = select('Status change', $statusChoices, default: 'none');
+			if ($statusOp === '') {
+				$sel = (string) select('Status change', $statusChoices, default: 'none');
 				$statusOp = $sel !== 'none' ? $sel : '';
 			}
 			$fill = confirm('Edit template fields now?', default: false);
-			if ($fill) {
+			if ($fill && $page->template instanceof \ProcessWire\Template) {
 				$sanitizer = \ProcessWire\wire('sanitizer');
 				foreach ($page->template->fieldgroup as $f) {
-					$fname = $f->name;
+					$fname = (string) $f->name;
 					$ftype = $f->type;
 					$label = $f->label ?: $fname;
 					$desc = $f->description ?: '';
 					$prompt = trim($label . ($desc ? " — {$desc}" : ''));
-					$current = (string) $page->get($fname);
+					$current = (string) $page->getUnformatted($fname);
 					$val = null;
-					if ($ftype instanceof \ProcessWire\FieldtypeText) {
+					if ($ftype instanceof \ProcessWire\FieldtypeTextarea) {
+						$val = textarea($prompt, default: $current, required: false);
+						$val = $sanitizer->textarea($val);
+					} elseif ($ftype instanceof \ProcessWire\FieldtypeText) {
 						$val = text($prompt, default: $current, required: false);
 						$val = $sanitizer->text($val);
-					} elseif ($ftype instanceof \ProcessWire\FieldtypeTextarea) {
-						$val = text($prompt, default: $current, required: false);
-						$val = $sanitizer->textarea($val);
 					}
 					if ($val !== null && $val !== $current) {
 						$changes[$fname] = $val;
@@ -147,6 +213,8 @@ final class PageUpdateCommand extends Command
 			note("Dry-run: would update page #{$page->id} with: " . json_encode($changes) . " and status '{$statusOp}'.");
 			return Command::SUCCESS;
 		}
+
+		$page->of(false);
 
 		if ($newParent !== null) {
 			$page->parent = $newParent;
@@ -193,7 +261,11 @@ final class PageUpdateCommand extends Command
 			}
 		}
 
-		$page->save();
+		try {
+			$page->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['saved' => true]);

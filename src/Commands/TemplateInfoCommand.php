@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\table;
@@ -34,7 +33,7 @@ final class TemplateInfoCommand extends Command
 		$asJson = (bool) $input->getOption('json');
 		$name = $input->getOption('name') ?: $input->getArgument('name');
 
-		if (!$name && !$asJson) {
+		if (!$name && $this->canPrompt($input, $asJson)) {
 			$name = $this->searchTemplate('Select the template to view info');
 			if ($name === '') {
 				return Command::SUCCESS;
@@ -42,23 +41,27 @@ final class TemplateInfoCommand extends Command
 		}
 
 		if (!$name) {
-			$msg = 'Provide template name via argument or --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide template name via argument or --name.');
+		}
+
+		if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $name) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid template name: '{$name}'.");
 		}
 
 		$template = \ProcessWire\wire('templates')->get((string) $name);
 
 		if (!$template || !$template->id) {
-			$msg = "Template '{$name}' not found.";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template '{$name}' not found.");
 		}
 
-		$pageCount = (int) \ProcessWire\wire('pages')->count("template={$template->name}, include=all");
+		$safeTpl = \ProcessWire\wire('sanitizer')->selectorValue((string) $template->name);
+		$pageCount = (int) \ProcessWire\wire('pages')->count("template={$safeTpl}, include=all");
 		$fieldList = [];
 		$fieldItems = [];
 		foreach ($template->fields as $f) {
-			$fieldList[] = [$f->name, $f->type->className()];
-			$fieldItems[] = ['name' => $f->name, 'type' => $f->type->className()];
+			$fType = $f->type ? $f->type->className() : 'Unknown';
+			$fieldList[] = [(string) $f->name, $fType];
+			$fieldItems[] = ['name' => (string) $f->name, 'type' => $fType];
 		}
 
 		$flags = [];
@@ -100,7 +103,7 @@ final class TemplateInfoCommand extends Command
 
 		table(
 			headers: ['Property', 'Value'],
-			rows: array_map(static fn(string $k, mixed $v): array => [$k, $v], array_keys($general), array_values($general))
+			rows: array_map(static fn(string $k, mixed $v): array => [$k, (string) $v], array_keys($general), array_values($general))
 		);
 
 		info('Fields (Order)');
@@ -116,8 +119,8 @@ final class TemplateInfoCommand extends Command
 		info('Access Control');
 		if ($template->useRoles) {
 			$accessRows = [
-				['View Roles', implode(', ', array_map(static fn(object $r): string => (string) $r->name, iterator_to_array($template->roles)))],
-				['Edit Roles', implode(', ', array_map(static fn(object $r): string => (string) $r->name, iterator_to_array($template->editRoles)))],
+				['View Roles', implode(', ', array_map(static fn(\ProcessWire\Role $r): string => (string) $r->name, iterator_to_array($template->roles)))],
+				['Edit Roles', implode(', ', array_map(static fn(\ProcessWire\Role $r): string => (string) $r->name, iterator_to_array($template->editRoles)))],
 			];
 			table(
 				headers: ['Permission', 'Roles'],

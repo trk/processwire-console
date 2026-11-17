@@ -10,7 +10,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\text;
@@ -38,7 +37,7 @@ final class RoleCreateCommand extends Command
 		$name = $input->getOption('name') ?: $input->getArgument('name');
 		$title = $input->getOption('title');
 
-		if (!$name && $input->isInteractive() && !$asJson) {
+		if (!$name && $this->canPrompt($input, $asJson)) {
 			$name = text(
 				label: 'Role name',
 				required: true
@@ -46,20 +45,25 @@ final class RoleCreateCommand extends Command
 		}
 
 		if (!$name) {
-			$msg = 'Provide role name via --name or argument.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide role name via --name or argument.');
+		}
+
+		$rawName = trim((string) $name);
+		$cleanName = (string) \ProcessWire\wire('sanitizer')->pageName($rawName, true);
+		if ($cleanName === '' || $cleanName !== strtolower($rawName) || ctype_digit($cleanName)) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid role name '{$rawName}'. Must be a valid non-numeric ProcessWire page name.");
 		}
 
 		$permsOpt = $input->getOption('permissions') ? (string) $input->getOption('permissions') : '';
 		$wantInteractive = (bool) $input->getOption('interactive');
 
-		$existing = \ProcessWire\wire('roles')->get((string) $name);
-		if ($existing && $existing->id) {
-			$msg = "Role '{$name}' already exists.";
-			return $asJson ? $this->outputJsonError($output, 'ALREADY_EXISTS', $msg) : (error($msg) ?? Command::FAILURE);
+		$existing = $this->findNamedSystemPage('roles', $cleanName);
+		if ($existing !== null) {
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "Role '{$cleanName}' already exists.");
 		}
 
-		$role = \ProcessWire\wire('roles')->add((string) $name);
+		$role = \ProcessWire\wire('roles')->add($cleanName);
+		$role->of(false);
 		if ($title) {
 			$role->title = (string) $title;
 		}
@@ -67,50 +71,50 @@ final class RoleCreateCommand extends Command
 
 		$granted = [];
 		$permissionsApi = \ProcessWire\wire('permissions');
-		if ($wantInteractive && $input->isInteractive() && !$asJson) {
+		if ($wantInteractive && $this->canPrompt($input, $asJson)) {
 			$all = [];
 			foreach ($permissionsApi as $p) {
-				$all[] = $p->name;
+				$all[] = (string) $p->name;
 			}
 			$choices = multiselect('Grant permissions to this role?', $all, required: false);
-			if ($choices) {
+			if ($choices !== []) {
 				foreach ($choices as $perm) {
-					$p = $permissionsApi->get((string) $perm);
-					if ($p && $p->id && !$role->hasPermission($p)) {
+					$p = $this->findNamedSystemPage('permissions', (string) $perm);
+					if ($p instanceof \ProcessWire\Permission && $p->id && !$role->hasPermission($p)) {
 						$role->addPermission($p);
-						$granted[] = (string) $perm;
+						$granted[] = (string) $p->name;
 					}
 				}
 				$role->save();
 			}
-		} elseif ($permsOpt) {
+		} elseif ($permsOpt !== '') {
 			foreach (explode(',', $permsOpt) as $perm) {
 				$perm = trim($perm);
 				if ($perm === '') {
 					continue;
 				}
-				$p = $permissionsApi->get($perm);
-				if ($p && $p->id && !$role->hasPermission($p)) {
+				$p = $this->findNamedSystemPage('permissions', $perm);
+				if ($p instanceof \ProcessWire\Permission && $p->id && !$role->hasPermission($p)) {
 					$role->addPermission($p);
-					$granted[] = $perm;
+					$granted[] = (string) $p->name;
 				}
 			}
-			if ($granted) {
+			if ($granted !== []) {
 				$role->save();
 			}
 		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, [
-				'id' => $role->id,
-				'name' => $role->name,
+				'id' => (int) $role->id,
+				'name' => (string) $role->name,
 				'title' => (string) ($role->title ?? ''),
 				'permissions' => $granted,
 			]);
 		}
 
-		$msg = "Role '{$name}' created.";
-		if ($granted) {
+		$msg = "Role '{$role->name}' created.";
+		if ($granted !== []) {
 			$msg .= ' Granted: ' . implode(', ', $granted) . '.';
 		}
 		info($msg);

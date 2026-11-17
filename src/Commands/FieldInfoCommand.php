@@ -11,7 +11,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Totoglu\Console\Traits\InteractWithProcessWire;
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 use function Laravel\Prompts\table;
 use function Laravel\Prompts\warning;
@@ -36,7 +35,7 @@ final class FieldInfoCommand extends Command
 		$asJson = (bool) $input->getOption('json');
 		$name = $input->getOption('name') ?: $input->getArgument('name');
 
-		if (!$name && !$asJson) {
+		if (!$name && $this->canPrompt($input, $asJson)) {
 			$name = $this->searchField('Search for a field to view info');
 			if ($name === '') {
 				return Command::SUCCESS;
@@ -44,18 +43,20 @@ final class FieldInfoCommand extends Command
 		}
 
 		if (!$name) {
-			$msg = 'Provide field name via argument or --name.';
-			return $asJson ? $this->outputJsonError($output, 'MISSING_NAME', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide field name via argument or --name.');
+		}
+
+		if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $name) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid field name: '{$name}'.");
 		}
 
 		$field = wire('fields')->get((string) $name);
 
 		if (!$field || !$field->id) {
-			$msg = "Field '{$name}' not found.";
-			return $asJson ? $this->outputJsonError($output, 'NOT_FOUND', $msg) : (error($msg) ?? Command::FAILURE);
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Field '{$name}' not found.");
 		}
 
-		$templates = array_values(array_map(static fn(object $t): string => (string) $t->name, iterator_to_array($field->getTemplates())));
+		$templates = array_values(array_map(static fn(\ProcessWire\Template $t): string => (string) $t->name, iterator_to_array($field->getTemplates())));
 		$tableName = $field->getTable();
 		$columns = [];
 		try {
@@ -85,14 +86,16 @@ final class FieldInfoCommand extends Command
 			$settings[$k] = (string) $v;
 		}
 
+		$typeName = $field->type ? $field->type->className() : 'Unknown';
+
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, [
-				'id' => $field->id,
-				'name' => $field->name,
+				'id' => (int) $field->id,
+				'name' => (string) $field->name,
 				'label' => (string) ($field->label ?: ''),
-				'type' => $field->type->className(),
+				'type' => $typeName,
 				'table' => $tableName,
-				'flags' => $this->getFlagSummary($field->flags),
+				'flags' => $this->getFlagSummary((int) $field->flags),
 				'templates' => $templates,
 				'columns' => $columns,
 				'settings' => $settings,
@@ -103,11 +106,11 @@ final class FieldInfoCommand extends Command
 
 		$general = [
 			['ID', (string) $field->id],
-			['Name', $field->name],
-			['Label', $field->label ?: '-'],
-			['Type', $field->type->className()],
+			['Name', (string) $field->name],
+			['Label', (string) ($field->label ?: '-')],
+			['Type', $typeName],
 			['Table', $tableName],
-			['Flags', $this->getFlagSummary($field->flags)],
+			['Flags', $this->getFlagSummary((int) $field->flags)],
 		];
 
 		table(
