@@ -100,6 +100,10 @@ final class StubGenerationTest extends TestCase
 			$this->assertDoesNotMatchRegularExpression('/\{\{[A-Za-z0-9_]+\}\}/', $content, "{$stubFile} contains unresolved placeholder");
 			$this->assertValidPhpSyntax($content, $stubFile);
 
+			if ($stubFile === 'module.stub') {
+				$this->assertStringContainsString("'autoload' => false", $content);
+			}
+
 			if ($stubFile === 'fieldtype.stub') {
 				$this->assertStringContainsString("get('InputfieldColor')", $content);
 				$this->assertStringContainsString('public function sanitizeValue(', $content);
@@ -163,6 +167,7 @@ final class StubGenerationTest extends TestCase
 			if ($stubFile === 'migration.create-template.stub') {
 				$this->assertStringContainsString('sanitizer->entities(', $rendered);
 			}
+
 		}
 	}
 

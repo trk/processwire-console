@@ -108,8 +108,8 @@ final class MakeModuleCommand extends Command
 			'{{name}}' => $escapeSingle($slugName),
 			"'version' => '0.0.1'" => "'version' => '" . $escapeSingle($version) . "'",
 		];
-		if ($type === 'module' && !$autoloadFlag) {
-			$replacements["'autoload' => true"] = "'autoload' => false";
+		if ($type === 'module' && $autoloadFlag) {
+			$replacements["'autoload' => false"] = "'autoload' => true";
 		}
 
 		$content = $this->loadStub($stubFile, $replacements);
