@@ -102,6 +102,9 @@ final class StubGenerationTest extends TestCase
 
 			if ($stubFile === 'fieldtype.stub') {
 				$this->assertStringContainsString("get('InputfieldColor')", $content);
+				$this->assertStringContainsString('public function sanitizeValue(', $content);
+				$this->assertStringContainsString('public function getDatabaseSchema(', $content);
+				$this->assertStringNotContainsString('___getDatabaseSchema', $content);
 				$this->assertStringNotContainsString('InputfieldFieldtype', $content);
 			}
 
@@ -176,7 +179,7 @@ final class StubGenerationTest extends TestCase
 		$replacements = [
 			'{{baseUrl}}' => 'https://processwire.test',
 			'{{adminUrl}}' => '/processwire/',
-			'{{title}}' => 'WireEntries: Workspace Flow',
+			'{{title}}' => 'Blog: Article Publishing Flow',
 			'{{helpersImportPath}}' => '../../../../../tests/e2e/helpers',
 		];
 

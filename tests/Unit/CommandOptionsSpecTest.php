@@ -12,22 +12,46 @@ use Totoglu\Console\Commands\BackupListCommand;
 use Totoglu\Console\Commands\BackupPurgeCommand;
 use Totoglu\Console\Commands\CacheClearCommand;
 use Totoglu\Console\Commands\DbBackupCommand;
+use Totoglu\Console\Commands\DbRestoreCommand;
 use Totoglu\Console\Commands\DbSeedCommand;
 use Totoglu\Console\Commands\DownCommand;
 use Totoglu\Console\Commands\FieldAttachCommand;
 use Totoglu\Console\Commands\FieldDeleteCommand;
+use Totoglu\Console\Commands\FieldDetachCommand;
 use Totoglu\Console\Commands\FieldInfoCommand;
 use Totoglu\Console\Commands\FieldRenameCommand;
 use Totoglu\Console\Commands\FieldUpdateCommand;
+use Totoglu\Console\Commands\LogClearAllCommand;
+use Totoglu\Console\Commands\LogClearCommand;
 use Totoglu\Console\Commands\LogListCommand;
 use Totoglu\Console\Commands\LogReadCommand;
 use Totoglu\Console\Commands\LogTailCommand;
 use Totoglu\Console\Commands\MakeTestCommand;
+use Totoglu\Console\Commands\MigrateCommand;
+use Totoglu\Console\Commands\MigrateFreshCommand;
+use Totoglu\Console\Commands\MigrateInstallCommand;
+use Totoglu\Console\Commands\MigrateRefreshCommand;
+use Totoglu\Console\Commands\MigrateResetCommand;
+use Totoglu\Console\Commands\MigrateRollbackCommand;
+use Totoglu\Console\Commands\MigrateStatusCommand;
+use Totoglu\Console\Commands\ModuleInstallCommand;
+use Totoglu\Console\Commands\ModuleUninstallCommand;
+use Totoglu\Console\Commands\PageCreateCommand;
 use Totoglu\Console\Commands\PageFindCommand;
+use Totoglu\Console\Commands\PageListCommand;
+use Totoglu\Console\Commands\PageMoveCommand;
 use Totoglu\Console\Commands\PagePublishCommand;
+use Totoglu\Console\Commands\PageRestoreCommand;
+use Totoglu\Console\Commands\PageTrashCommand;
 use Totoglu\Console\Commands\PageUnpublishCommand;
 use Totoglu\Console\Commands\PageUpdateCommand;
 use Totoglu\Console\Commands\PermissionCreateCommand;
+use Totoglu\Console\Commands\PermissionDeleteCommand;
+use Totoglu\Console\Commands\QueueClearCommand;
+use Totoglu\Console\Commands\QueueFailedCommand;
+use Totoglu\Console\Commands\QueueRetryCommand;
+use Totoglu\Console\Commands\QueueTableCommand;
+use Totoglu\Console\Commands\QueueWorkCommand;
 use Totoglu\Console\Commands\RoleCreateCommand;
 use Totoglu\Console\Commands\ScheduleRunCommand;
 use Totoglu\Console\Commands\TemplateDeleteCommand;
@@ -39,6 +63,7 @@ use Totoglu\Console\Commands\TestCommand;
 use Totoglu\Console\Commands\TestE2eCommand;
 use Totoglu\Console\Commands\TinkerCommand;
 use Totoglu\Console\Commands\UserCreateCommand;
+use Totoglu\Console\Commands\UserDeleteCommand;
 use Totoglu\Console\Commands\UserUpdateCommand;
 use Totoglu\Console\Traits\InteractWithProcessWire;
 
@@ -68,32 +93,57 @@ final class CommandOptionsSpecTest extends TestCase
 	public function testReadmeDocumentedOptionsExistOnCommands(): void
 	{
 		$spec = [
+			PageListCommand::class => ['template', 'parent', 'sort', 'limit', 'include', 'json'],
 			PageFindCommand::class => ['limit', 'json'],
-			PageUpdateCommand::class => ['id', 'path', 'title', 'name', 'parent', 'template', 'set', 'status', 'dry-run', 'json'],
+			PageCreateCommand::class => ['parent', 'template', 'name', 'title', 'unpublished', 'interactive', 'dry-run', 'json'],
+			PageUpdateCommand::class => ['id', 'path', 'title', 'name', 'parent', 'template', 'set', 'status', 'interactive', 'dry-run', 'json'],
 			PagePublishCommand::class => ['id', 'path', 'dry-run', 'json'],
 			PageUnpublishCommand::class => ['id', 'path', 'dry-run', 'json'],
+			PageTrashCommand::class => ['id', 'path', 'force', 'dry-run', 'json'],
+			PageRestoreCommand::class => ['id', 'path', 'dry-run', 'json'],
+			PageMoveCommand::class => ['id', 'path', 'parent', 'dry-run', 'json'],
 			FieldInfoCommand::class => ['name', 'json'],
 			FieldUpdateCommand::class => ['name', 'set', 'dry-run', 'json'],
 			FieldRenameCommand::class => ['name', 'new-name', 'dry-run', 'json'],
-			FieldAttachCommand::class => ['field', 'template', 'after', 'dry-run', 'json'],
+			FieldAttachCommand::class => ['field', 'template', 'after', 'position', 'dry-run', 'json'],
+			FieldDetachCommand::class => ['field', 'template', 'force', 'dry-run', 'json'],
 			FieldDeleteCommand::class => ['name', 'force', 'dry-run', 'json'],
 			TemplateInfoCommand::class => ['name', 'json'],
 			TemplateUpdateCommand::class => ['name', 'set', 'dry-run', 'json'],
 			TemplateRenameCommand::class => ['name', 'new-name', 'dry-run', 'json'],
 			TemplateFieldsReorderCommand::class => ['template', 'fields', 'dry-run', 'json'],
 			TemplateDeleteCommand::class => ['name', 'force', 'dry-run', 'json'],
+			ModuleInstallCommand::class => ['name', 'dry-run', 'json'],
+			ModuleUninstallCommand::class => ['name', 'force', 'dry-run', 'json'],
 			UserCreateCommand::class => ['name', 'email', 'password', 'role', 'interactive', 'force', 'json'],
 			UserUpdateCommand::class => ['id', 'name', 'email', 'password', 'add-role', 'remove-role', 'force', 'dry-run', 'json'],
+			UserDeleteCommand::class => ['id', 'name', 'force', 'dry-run', 'json'],
 			RoleCreateCommand::class => ['name', 'title', 'permissions', 'interactive', 'json'],
 			PermissionCreateCommand::class => ['name', 'title', 'json'],
+			PermissionDeleteCommand::class => ['name', 'force', 'dry-run', 'json'],
 			CacheClearCommand::class => ['json'],
 			LogListCommand::class => ['json'],
 			LogReadCommand::class => ['from', 'to', 'limit', 'find', 'sort', 'json'],
 			LogTailCommand::class => ['lines', 'follow', 'json'],
+			LogClearCommand::class => ['dry-run', 'force', 'json'],
+			LogClearAllCommand::class => ['dry-run', 'force', 'json'],
 			DbBackupCommand::class => ['json'],
+			DbRestoreCommand::class => ['file', 'force', 'dry-run', 'json'],
 			BackupListCommand::class => ['limit', 'json'],
 			BackupPurgeCommand::class => ['keep', 'days', 'force', 'dry-run', 'json'],
-			DbSeedCommand::class => ['class', 'force', 'json'],
+			DbSeedCommand::class => ['class', 'dry-run', 'force', 'json'],
+			MigrateCommand::class => ['step', 'dry-run', 'force', 'json'],
+			MigrateRollbackCommand::class => ['step', 'dry-run', 'force', 'json'],
+			MigrateResetCommand::class => ['dry-run', 'force', 'json'],
+			MigrateRefreshCommand::class => ['dry-run', 'force', 'json'],
+			MigrateFreshCommand::class => ['dry-run', 'force', 'json'],
+			MigrateStatusCommand::class => ['json'],
+			MigrateInstallCommand::class => ['json'],
+			QueueTableCommand::class => ['json'],
+			QueueWorkCommand::class => ['queue', 'sleep', 'tries', 'memory', 'once', 'json'],
+			QueueFailedCommand::class => ['limit', 'json'],
+			QueueRetryCommand::class => ['json'],
+			QueueClearCommand::class => ['dry-run', 'force', 'json'],
 			DownCommand::class => ['redirect', 'retry', 'secret', 'status', 'json'],
 			MakeTestCommand::class => ['unit', 'e2e', 'module', 'json'],
 			ScheduleRunCommand::class => ['json'],
@@ -103,7 +153,6 @@ final class CommandOptionsSpecTest extends TestCase
 		];
 
 		foreach ($spec as $commandClass => $expectedOptions) {
-			/** @var Command $command */
 			$command = new $commandClass();
 			$definition = $command->getDefinition();
 
@@ -117,7 +166,6 @@ final class CommandOptionsSpecTest extends TestCase
 
 		// Verify repeatable --set (VALUE_IS_ARRAY) on PageUpdate, FieldUpdate, TemplateUpdate
 		foreach ([PageUpdateCommand::class, FieldUpdateCommand::class, TemplateUpdateCommand::class] as $setCmdClass) {
-			/** @var Command $cmd */
 			$cmd = new $setCmdClass();
 			$opt = $cmd->getDefinition()->getOption('set');
 			$this->assertTrue($opt->isArray(), "{$setCmdClass} --set option must accept multiple values (VALUE_IS_ARRAY)");
@@ -153,6 +201,21 @@ final class CommandOptionsSpecTest extends TestCase
 		}
 	}
 
+	public function testTinkerCommandEvaluatesOneShotExpressionsInJsonMode(): void
+	{
+		$command = new TinkerCommand();
+		$input = new ArrayInput(['code' => '21 * 2', '--json' => true]);
+		$output = new BufferedOutput();
+
+		$exitCode = $command->run($input, $output);
+		$this->assertSame(Command::SUCCESS, $exitCode);
+
+		$decoded = json_decode($output->fetch(), true);
+		$this->assertIsArray($decoded);
+		$this->assertTrue($decoded['ok']);
+		$this->assertSame("42\n", $decoded['data']['output']);
+	}
+
 	public function testInteractWithProcessWireHelpers(): void
 	{
 		$helper = new class {
@@ -163,6 +226,7 @@ final class CommandOptionsSpecTest extends TestCase
 				isValidIdentifier as public;
 				normalizeLogChannel as public;
 				selectorHasTopLevelLimit as public;
+				clampSelectorTopLevelLimit as public;
 			}
 		};
 
@@ -180,7 +244,7 @@ final class CommandOptionsSpecTest extends TestCase
 			json_decode($out2->fetch(), true)
 		);
 
-		$this->assertTrue($helper->isValidIdentifier('ProcessWireConsole'));
+		$this->assertTrue($helper->isValidIdentifier('ProcessCustomAdmin'));
 		$this->assertTrue($helper->isValidIdentifier('Custom_Module_2'));
 		$this->assertFalse($helper->isValidIdentifier('2InvalidStart'));
 		$this->assertFalse($helper->isValidIdentifier('../evil'));
@@ -189,6 +253,9 @@ final class CommandOptionsSpecTest extends TestCase
 		$this->assertSame('errors', $helper->normalizeLogChannel('errors'));
 		$this->assertSame('errors', $helper->normalizeLogChannel('errors.txt'));
 		$this->assertSame('wire-queue_1', $helper->normalizeLogChannel('wire-queue_1.TXT'));
+		$this->assertSame('my.module', $helper->normalizeLogChannel('my.module.txt'));
+		$this->assertSame('', $helper->normalizeLogChannel('.hidden'));
+		$this->assertSame('', $helper->normalizeLogChannel('trailing.'));
 		$this->assertSame('', $helper->normalizeLogChannel('../errors'));
 		$this->assertSame('', $helper->normalizeLogChannel('sub/errors'));
 		$this->assertSame('', $helper->normalizeLogChannel('sub\\errors'));
@@ -199,13 +266,39 @@ final class CommandOptionsSpecTest extends TestCase
 		$this->assertTrue($helper->selectorHasTopLevelLimit('template=basic-page, limit=10'));
 		$this->assertFalse($helper->selectorHasTopLevelLimit('template=basic-page, limit=0'));
 		$this->assertFalse($helper->selectorHasTopLevelLimit('template=basic-page, children=[template=item, limit=5]'));
+		$this->assertFalse($helper->selectorHasTopLevelLimit('(template=basic-page, limit=5, id>0)'));
 		$this->assertFalse($helper->selectorHasTopLevelLimit('title="limit=5"'));
+
+		$this->assertSame(
+			'template=basic-page, limit=500',
+			$helper->clampSelectorTopLevelLimit('template=basic-page, limit=999999', 50, 500)
+		);
+		$this->assertSame(
+			'(template=basic-page, limit=5, id>0), limit=50',
+			$helper->clampSelectorTopLevelLimit('(template=basic-page, limit=5, id>0), limit=0', 50, 500)
+		);
+		$this->assertSame(
+			'template=basic-page, limit=10',
+			$helper->clampSelectorTopLevelLimit('template=basic-page, limit=10, limit>=999999', 50, 500)
+		);
+		$this->assertSame(
+			'template=basic-page, limit=2',
+			$helper->clampSelectorTopLevelLimit('template=basic-page, limit=2, !limit=0, @limit=99999', 50, 500)
+		);
+		$this->assertSame(
+			'template=basic-page, title={a, limit=9999}, limit=2',
+			$helper->clampSelectorTopLevelLimit('template=basic-page, title={a, limit=9999}, limit=2, !!limit=0, limit&=0', 50, 500)
+		);
 
 		// TestCommand flag stripping and value-flag path detection
 		$pestForward = TestCommand::extractForwardArgs(['vendor/bin/wire', 'test', '--json', '--no-interaction', '--filter', 'Login']);
 		$this->assertSame(['--filter', 'Login'], $pestForward);
 		$this->assertFalse(TestCommand::hasExplicitPathFilter($pestForward));
 		$this->assertTrue(TestCommand::hasExplicitPathFilter(['--filter', 'Login', 'site/modules/Blog/tests']));
+		$this->assertTrue(TestCommand::hasExplicitPathFilter(['--process-isolation', 'site/modules/Blog/tests/BlogTest.php']));
+
+		$e2eForward = TestE2eCommand::extractForwardArgs(['vendor/bin/wire', 'test:e2e', '--module', '--headed']);
+		$this->assertSame(['--headed'], $e2eForward);
 	}
 
 	public function testSecurityAndInputValidationGuardsOnCommandsAndScheduler(): void

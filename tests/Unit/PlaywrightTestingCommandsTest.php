@@ -68,7 +68,7 @@ final class PlaywrightTestingCommandsTest extends TestCase
 		);
 		$this->assertSame(
 			'../../../../../tests/e2e/helpers',
-			MakeTestCommand::computeRelativeImportPath('/var/www/site/modules/WireEntries/tests/e2e/', '/var/www/tests/e2e/helpers')
+			MakeTestCommand::computeRelativeImportPath('/var/www/site/modules/ProcessAnalytics/tests/e2e/', '/var/www/tests/e2e/helpers')
 		);
 	}
 
@@ -137,9 +137,9 @@ final class PlaywrightTestingCommandsTest extends TestCase
 		$this->assertSame(['--grep', 'Workspace', '--headed'], $forward1);
 		$this->assertFalse(TestE2eCommand::hasExplicitPathFilter($forward1));
 
-		$argv2 = ['vendor/bin/wire', 'test:e2e', '-m', 'WireSeo', 'site/modules/WireSeo/tests/e2e/seo-workspace.spec.ts'];
+		$argv2 = ['vendor/bin/wire', 'test:e2e', '-m', 'ProcessRedirects', 'site/modules/ProcessRedirects/tests/e2e/redirects-dashboard.spec.ts'];
 		$forward2 = TestE2eCommand::extractForwardArgs($argv2);
-		$this->assertSame(['site/modules/WireSeo/tests/e2e/seo-workspace.spec.ts'], $forward2);
+		$this->assertSame(['site/modules/ProcessRedirects/tests/e2e/redirects-dashboard.spec.ts'], $forward2);
 		$this->assertTrue(TestE2eCommand::hasExplicitPathFilter($forward2));
 
 		// Console flags after unrecognized Playwright flags must still parse reliably
@@ -148,12 +148,12 @@ final class PlaywrightTestingCommandsTest extends TestCase
 		$emptyInput->bind($command->getDefinition());
 		$flags = TestE2eCommand::parseConsoleFlags(
 			$emptyInput,
-			['vendor/bin/wire', 'test:e2e', '--list', '--module', 'WireConsole', '--json']
+			['vendor/bin/wire', 'test:e2e', '--list', '--module', 'SiteBlog', '--json']
 		);
 		$this->assertSame([
 			'json' => true,
 			'init' => false,
-			'module' => 'WireConsole',
+			'module' => 'SiteBlog',
 		], $flags);
 	}
 
