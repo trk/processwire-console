@@ -262,10 +262,10 @@ if (!($wire instanceof \ProcessWire\ProcessWire)) {
 	});
 }
 
-$consoleVersion = '0.2.2';
+$consoleVersion = '0.2.3';
 if (class_exists('\Composer\InstalledVersions')) {
 	try {
-		$consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.2.2';
+		$consoleVersion = \Composer\InstalledVersions::getPrettyVersion('trk/processwire-console') ?? '0.2.3';
 	} catch (\Throwable $e) {
 		error_log('[wire-cli] Could not resolve console version: ' . $e->getMessage());
 	}
