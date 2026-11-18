@@ -28,6 +28,7 @@ return new class {
 		}
 
 		$page = $pages->newPage(['template' => $template]);
+		$page->of(false);
 		$page->parent = $parent;
 		$page->name = $this->pageName;
 		$page->title = $this->pageTitle;

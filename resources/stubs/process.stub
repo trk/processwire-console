@@ -20,7 +20,10 @@ class {{className}} extends Process
 			'title' => '{{title}}',
 			'version' => '0.0.1',
 			'summary' => '{{summary}}',
-			'permission' => '{{className}}',
+			'permission' => '{{name}}',
+			'permissions' => [
+				'{{name}}' => '{{title}}',
+			],
 			'page' => [
 				'name' => '{{name}}',
 				'parent' => 'setup',

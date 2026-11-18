@@ -29,7 +29,7 @@ return new class {
 		// Create template file
 		$safeFile = basename($this->templateName) . '.php';
 		$templateFile = wire('config')->paths->templates . $safeFile;
-		if (!file_exists($templateFile)) {
+		if (!file_exists($templateFile) && !is_link($templateFile)) {
 			file_put_contents(
 				$templateFile,
 				"<?php\n\ndeclare(strict_types=1);\n\nnamespace ProcessWire;\n\n/** @var Page \$page */\n/** @var Sanitizer \$sanitizer */\n?>\n<h1><?= \$sanitizer->entities((string) \$page->title) ?></h1>\n"
@@ -57,7 +57,7 @@ return new class {
 		// Remove template file
 		$safeFile = basename($this->templateName) . '.php';
 		$templateFile = wire('config')->paths->templates . $safeFile;
-		if (file_exists($templateFile)) {
+		if (is_file($templateFile) && !is_link($templateFile)) {
 			unlink($templateFile);
 		}
 

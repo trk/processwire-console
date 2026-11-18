@@ -21,13 +21,21 @@ export default async function globalTeardown(): Promise<void> {
 				$_SERVER['HTTP_HOST'] ??= 'localhost';
 				$_SERVER['SCRIPT_NAME'] = '/index.php';
 				require_once 'index.php';
-				$username = ${JSON.stringify(username)};
+				$username = trim((string) ${JSON.stringify(username)});
+				if ($username === '' || ctype_digit($username)) {
+					return;
+				}
+				$clean = (string) $wire->sanitizer->pageName($username, true);
+				if ($clean === '' || $clean !== strtolower($username) || $clean === 'guest') {
+					return;
+				}
 				try {
 					$stmt = $wire->database->prepare("DELETE FROM session_login_throttle WHERE name = :u");
-					$stmt->execute([':u' => $username]);
+					$stmt->execute([':u' => $clean]);
 				} catch (\\Throwable $e) {}
-				$u = $wire->users->get($username);
-				if ($u && $u->id) {
+				$safe = $wire->sanitizer->selectorValue($clean);
+				$u = $wire->users->get("name={$safe}");
+				if ($u && $u->id && !$u->isGuest()) {
 					$wire->users->delete($u);
 				}
 			`;

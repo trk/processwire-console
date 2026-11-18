@@ -17,7 +17,10 @@ return new class {
 			throw new \RuntimeException("Module '{$this->moduleName}' is not installable. Ensure it exists in site/modules/.");
 		}
 
-		$modules->install($this->moduleName);
+		$installed = $modules->install($this->moduleName);
+		if ($installed === null || !$modules->isInstalled($this->moduleName)) {
+			throw new \RuntimeException("Failed to install module '{$this->moduleName}'.");
+		}
 	}
 
 	public function down(): void
@@ -28,16 +31,10 @@ return new class {
 			return;
 		}
 
-		// Guard: check if other installed modules depend on this one
-		$info = $modules->getModuleInfoVerbose($this->moduleName);
-		$requiredBy = $info['requiredBy'] ?? [];
-		$installedDeps = array_filter($requiredBy, fn(string $m): bool => $modules->isInstalled($m));
-
-		if (!empty($installedDeps)) {
-			throw new WireException(
-				"Cannot uninstall module '{$this->moduleName}' — required by: " . implode(', ', $installedDeps) . ". "
-				. "Uninstall dependent modules first."
-			);
+		$reason = $modules->isUninstallable($this->moduleName, true);
+		if ($reason !== true) {
+			$detail = is_string($reason) && $reason !== '' ? $reason : 'Module is not uninstallable.';
+			throw new WireException("Cannot uninstall module '{$this->moduleName}': {$detail}");
 		}
 
 		$modules->uninstall($this->moduleName);

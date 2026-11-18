@@ -46,7 +46,7 @@ export function getE2EUsername(): string {
 export function runWirePhp<T = unknown>(phpBody: string): T {
 	const activeUser = getE2EUsername();
 	const setCurrentUserPhp = activeUser
-		? `$__e2eUser = $wire->users->get(${JSON.stringify(activeUser)}); if ($__e2eUser && $__e2eUser->id) { $wire->users->setCurrentUser($__e2eUser); }\n`
+		? `$__e2eRaw = trim((string) ${JSON.stringify(activeUser)}); $__e2eClean = (string) $wire->sanitizer->pageName($__e2eRaw, true); if ($__e2eClean !== '' && !ctype_digit($__e2eClean) && $__e2eClean !== 'guest') { $__e2eSafe = $wire->sanitizer->selectorValue($__e2eClean); $__e2eUser = $wire->users->get("name={$__e2eSafe}"); if ($__e2eUser && $__e2eUser->id && !$__e2eUser->isGuest()) { $wire->users->setCurrentUser($__e2eUser); } }\n`
 		: '';
 	const script = `$_SERVER['HTTP_HOST'] ??= 'localhost';\n$_SERVER['SCRIPT_NAME'] = '/index.php';\nrequire_once 'index.php';\n${setCurrentUserPhp}${phpBody}`;
 	const raw = execFileSync('php', ['-r', script], {
@@ -78,8 +78,9 @@ export function createIsolatedSuperuser(prefix = 'pw_e2e_iso'): {
 			$stmt = $wire->database->prepare("DELETE FROM session_login_throttle WHERE name IN (:u, '127.0.0.1', '::1')");
 			$stmt->execute([':u' => $username]);
 		} catch (\\Throwable $e) {}
-		$existing = $wire->users->get($username);
-		if ($existing && $existing->id) {
+		$safeName = $wire->sanitizer->selectorValue($username);
+		$existing = $wire->users->get("name={$safeName}");
+		if ($existing && $existing->id && !$existing->isGuest()) {
 			$wire->users->delete($existing);
 		}
 		$u = $wire->users->add($username);
@@ -101,18 +102,28 @@ export function createIsolatedSuperuser(prefix = 'pw_e2e_iso'): {
  * Delete an isolated ProcessWire user created during E2E test execution.
  */
 export function deleteIsolatedUser(username: string): void {
-	if (!username) {
+	if (!username || /^\d+$/.test(username.trim())) {
 		return;
 	}
 	try {
 		runWirePhp(`
-			$username = ${JSON.stringify(username)};
+			$username = trim((string) ${JSON.stringify(username)});
+			if ($username === '' || ctype_digit($username)) {
+				echo 'false';
+				return;
+			}
+			$clean = (string) $wire->sanitizer->pageName($username, true);
+			if ($clean === '' || $clean !== strtolower($username) || $clean === 'guest') {
+				echo 'false';
+				return;
+			}
 			try {
 				$stmt = $wire->database->prepare("DELETE FROM session_login_throttle WHERE name = :u");
-				$stmt->execute([':u' => $username]);
+				$stmt->execute([':u' => $clean]);
 			} catch (\\Throwable $e) {}
-			$u = $wire->users->get($username);
-			if ($u && $u->id) {
+			$safe = $wire->sanitizer->selectorValue($clean);
+			$u = $wire->users->get("name={$safe}");
+			if ($u && $u->id && !$u->isGuest()) {
 				$wire->users->delete($u);
 			}
 			echo 'true';
