@@ -5,4 +5,4 @@ contact_links:
     about: Please do not open public issues for vulnerabilities. Use this private channel.
   - name: Support Question
     url: https://totoglu.com/support
-    about: We use GitHub issues only to discuss about our app and module bugs and new features.
+    about: We use GitHub issues only to discuss bug reports and feature requests.

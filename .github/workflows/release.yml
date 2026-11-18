@@ -18,10 +18,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configure Git User
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: ctype, json, mbstring, pdo
+          coverage: none
+
+      - name: Install dependencies & verify quality gate
         run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          composer install --no-interaction --prefer-dist
+          composer analyse
+          composer test
+
+      - name: Configure Git User
+        env:
+          GIT_ACTOR: ${{ github.actor }}
+        run: |
+          git config user.name "${GIT_ACTOR}"
+          git config user.email "${GIT_ACTOR}@users.noreply.github.com"
 
       - name: Extract version from composer.json
         id: get_version
@@ -33,12 +48,19 @@ jobs:
             exit 1
           fi
 
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid semantic version format in composer.json: $VERSION"
+            exit 1
+          fi
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Check if tag exists
         id: check_tag
+        env:
+          PKG_VERSION: ${{ steps.get_version.outputs.version }}
         run: |
-          TAG="v${{ steps.get_version.outputs.version }}"
+          TAG="v${PKG_VERSION}"
           if git ls-remote --exit-code --refs --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "Tag $TAG already exists on remote. Skipping release."
@@ -50,9 +72,10 @@ jobs:
         if: steps.check_tag.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PKG_VERSION: ${{ steps.get_version.outputs.version }}
+          REPO: ${{ github.repository }}
         run: |
-          TAG="v${{ steps.get_version.outputs.version }}"
-          REPO="${{ github.repository }}"
+          TAG="v${PKG_VERSION}"
           echo "Generated Tag: $TAG"
           git tag "$TAG"
           git push origin "$TAG"

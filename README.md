@@ -74,7 +74,7 @@ ProcessWire is a powerful CMF but lacks a first-party CLI. This package fills th
 | Testing | 2 commands | Run Pest (`test`) and Playwright E2E (`test:e2e`) suites |
 | **Total** | **75 commands** | |
 
-Every command supports `--json` for machine-readable output; mutation commands support `--dry-run` for safe previews, and destructive commands support `--force` for non-interactive scripting.
+Every command supports `--json` for machine-readable output; most mutation commands support `--dry-run` for safe previews, and destructive commands support `--force` for non-interactive scripting.
 
 ---
 
@@ -300,8 +300,9 @@ php vendor/bin/wire page:update --id=1042 --title="Preview" --dry-run
 | `--name` | New URL-safe name |
 | `--parent` | New parent path or ID |
 | `--template` | Change template |
-| `--status` | Status: `published`, `unpublished`, `hidden`, `locked` |
+| `--status` | Status: `publish`/`published`, `unpublish`/`unpublished`, `hide`/`hidden`, `show`, `lock`/`locked`, `unlock`/`unlocked` |
 | `--set` | Set field value as `key=value` (repeatable) |
+| `-i, --interactive` | Prompt interactively for status and field edits |
 | `--dry-run` | Preview without saving |
 | `--json` | Output as JSON |
 
@@ -311,7 +312,7 @@ php vendor/bin/wire page:update --id=1042 --title="Preview" --dry-run
 
 ```bash
 php vendor/bin/wire page:publish --id=1042
-php vendor/bin/wire page:unpublish --id=1042
+php vendor/bin/wire page:unpublish --path=/about/
 php vendor/bin/wire page:publish --id=1042 --dry-run --json
 ```
 
@@ -319,17 +320,18 @@ php vendor/bin/wire page:publish --id=1042 --dry-run --json
 
 ```bash
 php vendor/bin/wire page:trash --id=1042
-php vendor/bin/wire page:restore --id=1042
+php vendor/bin/wire page:trash --path=/drafts/old/ --dry-run
+php vendor/bin/wire page:restore --id=1042 --dry-run
 
 # Force without confirmation
-php vendor/bin/wire page:trash --id=1042 --force
+php vendor/bin/wire page:trash --id=1042 --force --json
 ```
 
 #### `page:move`
 
 ```bash
 php vendor/bin/wire page:move --id=1042 --parent=/new-section/
-php vendor/bin/wire page:move --id=1042 --parent=1001 --dry-run
+php vendor/bin/wire page:move --path=/about/ --parent=1001 --dry-run --json
 ```
 
 ---
@@ -364,11 +366,11 @@ php vendor/bin/wire field:info --name=body --json
 #### `field:update`
 
 ```bash
-# Update label and description
+# Update label and description (supports --dry-run and --json)
 php vendor/bin/wire field:update --name=body --set="label=Body Text" --set="description=Main content area"
 
-# Change field settings
-php vendor/bin/wire field:update --name=summary --set="maxlength=500" --set="required=1"
+# Preview field setting changes without writing
+php vendor/bin/wire field:update --name=summary --set="maxlength=500" --set="required=1" --dry-run
 ```
 
 #### `field:rename`
@@ -381,21 +383,22 @@ php vendor/bin/wire field:rename --name=body --new-name=content --dry-run
 #### `field:attach` / `field:detach`
 
 ```bash
-# Attach a field to a template
-php vendor/bin/wire field:attach --template=blog-post --field=images
+# Attach a field to a template (supports --position=first|last|after=FIELD|before=FIELD and --dry-run)
+php vendor/bin/wire field:attach --template=blog-post --field=images --position=first
 
 # Attach after a specific field
-php vendor/bin/wire field:attach --template=blog-post --field=tags --after=body
+php vendor/bin/wire field:attach --template=blog-post --field=tags --after=body --dry-run
 
 # Detach a field from a template
-php vendor/bin/wire field:detach --template=blog-post --field=sidebar
+php vendor/bin/wire field:detach --template=blog-post --field=sidebar --force
+php vendor/bin/wire field:detach --template=blog-post --field=sidebar --dry-run --json
 ```
 
 #### `field:delete`
 
 ```bash
-php vendor/bin/wire field:delete --name=unused_field
-php vendor/bin/wire field:delete --name=unused_field --force
+php vendor/bin/wire field:delete --name=unused_field --dry-run
+php vendor/bin/wire field:delete --name=unused_field --force --json
 ```
 
 ---
@@ -406,7 +409,7 @@ php vendor/bin/wire field:delete --name=unused_field --force
 
 ```bash
 php vendor/bin/wire template:list
-php vendor/bin/wire template:list --search=blog --json
+php vendor/bin/wire template:list --tag=content --search=blog --json
 ```
 
 #### `template:info`
@@ -420,26 +423,28 @@ php vendor/bin/wire template:info --name=basic-page --json
 
 ```bash
 php vendor/bin/wire template:update --name=blog-post --set="label=Blog Article"
-php vendor/bin/wire template:update --name=blog-post --set="noChildren=1" --set="noParents=-1"
+php vendor/bin/wire template:update --name=blog-post --set="noChildren=1" --set="noParents=-1" --dry-run
 ```
 
 #### `template:rename`
 
 ```bash
 php vendor/bin/wire template:rename --name=old-template --new-name=new-template
+php vendor/bin/wire template:rename --name=old-template --new-name=new-template --dry-run
 ```
 
 #### `template:fields:reorder`
 
 ```bash
-# Reorder fields within a template
+# Reorder fields within a template (supports --dry-run and --json)
 php vendor/bin/wire template:fields:reorder --template=blog-post --fields="title,body,images,tags,summary"
+php vendor/bin/wire template:fields:reorder --template=blog-post --fields="title,body" --dry-run
 ```
 
 #### `template:delete`
 
 ```bash
-php vendor/bin/wire template:delete --name=unused-template
+php vendor/bin/wire template:delete --name=unused-template --dry-run
 php vendor/bin/wire template:delete --name=unused-template --force
 ```
 
@@ -471,11 +476,11 @@ php vendor/bin/wire module:list --site --json
 #### `module:install` / `module:uninstall`
 
 ```bash
+php vendor/bin/wire module:install --name=ModuleName --dry-run
 php vendor/bin/wire module:install --name=ModuleName
+php vendor/bin/wire module:uninstall --name=ModuleName --dry-run
 php vendor/bin/wire module:uninstall --name=ModuleName --force
 ```
-
-
 
 #### `module:refresh`
 
@@ -502,23 +507,23 @@ Complete role-based access control management from the command line.
 #### Users
 
 ```bash
-# List all users
+# List all users (supports --search, --role, --limit, --json)
 php vendor/bin/wire user:list
-php vendor/bin/wire user:list --role=editor --json
+php vendor/bin/wire user:list --search=john --role=editor --limit=25 --json
 
-# Create a user (interactive prompts for password, email, roles)
+# Create a user (interactive prompts for password, email, roles; also accepts <username> <email>, -i/--interactive, -p/--password, repeatable -r/--role)
 php vendor/bin/wire user:create
 
 # Create a user non-interactively
 php vendor/bin/wire user:create --name=john --email=john@example.com --password=SecretPass --role=editor --force
 
-# Update a user
-php vendor/bin/wire user:update --name=john --email=new@example.com
-php vendor/bin/wire user:update --name=john --add-role=editor --remove-role=author
+# Update a user (supports --id, --name, --email, --password, --add-role, --remove-role, --dry-run, --force, --json)
+php vendor/bin/wire user:update --name=john --email=new@example.com --dry-run
+php vendor/bin/wire user:update --id=1045 --password=UpdatedSecret --add-role=editor --remove-role=author --force
 
 # Delete a user
-php vendor/bin/wire user:delete --name=john
-php vendor/bin/wire user:delete --id=1045 --force
+php vendor/bin/wire user:delete --name=john --dry-run
+php vendor/bin/wire user:delete --id=1045 --force --json
 ```
 
 #### Roles
@@ -528,13 +533,11 @@ php vendor/bin/wire user:delete --id=1045 --force
 php vendor/bin/wire role:list
 php vendor/bin/wire role:list --json
 
-# Create a role
-php vendor/bin/wire role:create --name=editor --title="Content Editor"
+# Create a role (supports --permissions and -i/--interactive)
+php vendor/bin/wire role:create --name=editor --title="Content Editor" --permissions="page-view,page-edit"
 
-# Grant a permission to a role
-php vendor/bin/wire role:grant --role=editor --permission=page-edit
-
-# Revoke a permission from a role
+# Grant or revoke a permission on a role (supports --dry-run and --json)
+php vendor/bin/wire role:grant --role=editor --permission=page-edit --dry-run
 php vendor/bin/wire role:revoke --role=editor --permission=page-delete
 ```
 
@@ -545,10 +548,11 @@ php vendor/bin/wire role:revoke --role=editor --permission=page-delete
 php vendor/bin/wire permission:list
 
 # Create a custom permission
-php vendor/bin/wire permission:create --name=my-custom-permission
+php vendor/bin/wire permission:create --name=my-custom-permission --title="Custom Permission"
 
 # Delete a custom permission
-php vendor/bin/wire permission:delete --name=my-custom-permission
+php vendor/bin/wire permission:delete --name=my-custom-permission --dry-run
+php vendor/bin/wire permission:delete --name=my-custom-permission --force --json
 ```
 
 ---
@@ -598,8 +602,8 @@ Retrieve and display ProcessWire logs as a formatted table.
 # Read 'errors' log
 php vendor/bin/wire log:read errors
 
-# Read with a specific date range
-php vendor/bin/wire log:read messages --from="2026-04-01" --to="today"
+# Read with a specific date range and sort order (asc|desc)
+php vendor/bin/wire log:read messages --from="2026-04-01" --to="today" --sort=desc
 
 # Limit output and filter by string
 php vendor/bin/wire log:read errors --limit=50 --find="Exception"
@@ -628,11 +632,11 @@ php vendor/bin/wire log:tail errors --json
 
 #### `log:clear`
 
-Clear a specific log file.
+Clear one or more ProcessWire log files.
 
 ```bash
-php vendor/bin/wire log:clear errors
-php vendor/bin/wire log:clear exceptions --force
+php vendor/bin/wire log:clear errors --dry-run
+php vendor/bin/wire log:clear errors exceptions --force --json
 ```
 
 #### `log:clear-all`
@@ -640,8 +644,8 @@ php vendor/bin/wire log:clear exceptions --force
 Clear all ProcessWire log files.
 
 ```bash
-php vendor/bin/wire log:clear-all
-php vendor/bin/wire log:clear-all --force
+php vendor/bin/wire log:clear-all --dry-run
+php vendor/bin/wire log:clear-all --force --json
 ```
 
 ---
@@ -662,7 +666,7 @@ php vendor/bin/wire db:backup --json
 Restore the database from a backup file.
 
 ```bash
-php vendor/bin/wire db:restore --file=backup-2026-04-08.sql
+php vendor/bin/wire db:restore --file=backup-2026-04-08.sql --dry-run
 php vendor/bin/wire db:restore --file=backup-2026-04-08.sql --force
 ```
 
@@ -771,8 +775,9 @@ Migrations live in `site/migrations/` and are tracked in the `wire_migrations` d
 Generate a new timestamped migration file from a stub.
 
 ```bash
-# Blank migration
+# Blank migration (pass -m/--module=ModuleName on schema/page types to scaffold into site/modules/<ModuleName>/migrations/)
 php vendor/bin/wire make:migration create_blog_section
+php vendor/bin/wire make:migration add_blog_schema --module=SiteBlog
 
 # Create a field
 php vendor/bin/wire make:migration add_subtitle_field --type=create-field --field=subtitle --fieldtype=FieldtypeText
@@ -916,10 +921,10 @@ Rollback the last batch of migrations (calls `down()` in reverse order).
 
 ```bash
 # Rollback last batch
-php vendor/bin/wire migrate:rollback
+php vendor/bin/wire migrate:rollback --force
 
 # Rollback last 3 individual migrations
-php vendor/bin/wire migrate:rollback --step=3
+php vendor/bin/wire migrate:rollback --step=3 --force --json
 
 # Preview
 php vendor/bin/wire migrate:rollback --dry-run
@@ -930,8 +935,8 @@ php vendor/bin/wire migrate:rollback --dry-run
 Rollback ALL applied migrations.
 
 ```bash
-php vendor/bin/wire migrate:reset
-php vendor/bin/wire migrate:reset --force
+php vendor/bin/wire migrate:reset --dry-run
+php vendor/bin/wire migrate:reset --force --json
 ```
 
 #### `migrate:refresh`
@@ -939,7 +944,7 @@ php vendor/bin/wire migrate:reset --force
 Reset + re-run all migrations (shortcut for `reset` then `migrate`).
 
 ```bash
-php vendor/bin/wire migrate:refresh
+php vendor/bin/wire migrate:refresh --dry-run
 php vendor/bin/wire migrate:refresh --force --json
 ```
 
@@ -948,8 +953,8 @@ php vendor/bin/wire migrate:refresh --force --json
 Drop the tracking table entirely and re-run all migrations from scratch.
 
 ```bash
-php vendor/bin/wire migrate:fresh
-php vendor/bin/wire migrate:fresh --force
+php vendor/bin/wire migrate:fresh --dry-run
+php vendor/bin/wire migrate:fresh --force --json
 ```
 
 > **Warning:** `migrate:fresh` does not call `down()` — it drops the tracking table and re-applies all migrations. Use `migrate:refresh` if you need clean rollbacks.
@@ -1038,10 +1043,11 @@ php vendor/bin/wire queue:retry all
 
 #### `queue:clear`
 
-Wipe all logs from the `failed_jobs` database.
+Wipe all records from the `failed_jobs` table.
 
 ```bash
-php vendor/bin/wire queue:clear
+php vendor/bin/wire queue:clear --dry-run
+php vendor/bin/wire queue:clear --force --json
 ```
 
 ---
@@ -1066,11 +1072,14 @@ php vendor/bin/wire make:seeder DemoProductsSeeder --module=Shop
 Run the database seeders. It auto-discovers seeders in `site/seeders/` and `site/modules/*/seeders/`.
 
 ```bash
+# Preview seeders without running them
+php vendor/bin/wire db:seed --dry-run
+
 # Run all discovered seeders
-php vendor/bin/wire db:seed
+php vendor/bin/wire db:seed --force --json
 
 # Run a specific seeder class
-php vendor/bin/wire db:seed --class=UsersSeeder
+php vendor/bin/wire db:seed --class=UsersSeeder --force
 ```
 
 ---
@@ -1123,7 +1132,7 @@ php vendor/bin/wire test --filter=Login
 
 #### `test:e2e`
 
-Run optional **Playwright** end-to-end browser and WCAG 2.1 AA accessibility suites across `/site/tests/e2e/`, `/site/templates/tests/e2e/`, and **active** `/site/modules/<Module>/tests/e2e/` directories.
+Run optional **Playwright** end-to-end browser and WCAG 2.1 AA accessibility suites across `/tests/e2e/`, `/site/tests/e2e/`, `/site/templates/tests/e2e/`, and **active** `/site/modules/<Module>/tests/e2e/` directories.
 
 > **Tip:** On first run (or via `--init`), `test:e2e` can interactively install `@playwright/test` + `@axe-core/playwright` and scaffold `playwright.config.ts` alongside `tests/e2e/{global-setup,global-teardown,helpers}.ts` with ephemeral ProcessWire superuser authentication.
 
@@ -1176,7 +1185,38 @@ php vendor/bin/wire schedule:run
 
 Easily put your application into a maintenance or disabled state.
 
-**Requirement:** For ProcessWire to respond to this state, update `site/init.php` to check for `site/down.json`. (See the Boost `pw-maintenance` skill for a code snippet).
+**Requirement:** For ProcessWire to intercept HTTP requests during maintenance mode, add the following check to `site/init.php`:
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace ProcessWire;
+
+$downFile = $config->paths->site . 'down.json';
+$reqPath = (string) (parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/');
+if (!$config->cli && is_file($downFile) && !is_link($downFile) && !str_starts_with($reqPath, $config->urls->admin)) {
+	$down = json_decode((string) file_get_contents($downFile), true) ?: [];
+	$secret = (string) ($down['secret'] ?? '');
+	$querySecret = $input->get->text('secret');
+	$provided = $querySecret !== '' ? $querySecret : (string) $session->get('maintenance_secret');
+	if ($secret !== '' && hash_equals($secret, $provided)) {
+		$session->set('maintenance_secret', $secret);
+	} else {
+		$redirect = (string) ($down['redirect'] ?? '');
+		$redirectPath = (string) (parse_url($redirect, PHP_URL_PATH) ?: '');
+		if ($redirect !== '' && $reqPath !== $redirectPath) {
+			$session->redirect($redirect, false);
+		}
+		if (!empty($down['retry'])) {
+			header('Retry-After: ' . (int) $down['retry']);
+		}
+		http_response_code((int) ($down['status'] ?? 503));
+		exit('Service Unavailable');
+	}
+}
+```
 
 #### `down`
 
@@ -1405,7 +1445,7 @@ export PW_CLI_DISABLE_TINKER=1
 
 ### Confirmation Prompts
 
-All destructive commands (`*:delete`, `*:trash`, `db:restore`, `backup:purge`, `migrate:reset`, `migrate:fresh`) require explicit confirmation. Use `--force` to bypass for scripting.
+All destructive commands (`*:delete`, `*:trash`, `field:detach`, `module:uninstall`, `db:restore`, `db:seed`, `backup:purge`, `log:clear`, `log:clear-all`, `queue:clear`, `migrate:rollback`, `migrate:reset`, `migrate:refresh`, `migrate:fresh`) require explicit confirmation. Use `--force` to bypass for scripting.
 
 ### Migration Safety
 

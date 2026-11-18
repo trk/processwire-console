@@ -28,7 +28,9 @@
   },
   "require": {
     "php": ">=8.3",
+    "ext-ctype": "*",
     "ext-json": "*",
+    "ext-mbstring": "*",
     "ext-pdo": "*",
     "laravel/prompts": "^0.3",
     "symfony/console": "^7.0 || ^8.0",

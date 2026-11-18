@@ -6,6 +6,7 @@ parameters:
 	paths:
 		- src
 		- bin/wire
+		- tests
 	tmpDir: .phpstan.cache
 	ignoreErrors:
 		- '#Function ProcessWire\\wire not found#'
