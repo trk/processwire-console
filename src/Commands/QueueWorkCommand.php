@@ -38,19 +38,45 @@ final class QueueWorkCommand extends Command
 		self::$shouldQuit = false;
 		self::$pendingJob = null;
 
+		$once = (bool) $input->getOption('once');
+		$asJson = (bool) $input->getOption('json');
+
 		$queueName = trim((string) $input->getOption('queue'));
 		if ($queueName === '') {
 			$queueName = 'default';
 		}
-		$sleep = max(0, (int) $input->getOption('sleep'));
-		$maxTries = max(1, (int) $input->getOption('tries'));
-		$memoryLimit = max(16, (int) $input->getOption('memory')) * 1024 * 1024;
-		$once = (bool) $input->getOption('once');
-		$asJson = (bool) $input->getOption('json');
+		if (strlen($queueName) > 255 || preg_match('/^[A-Za-z0-9._:-]+$/', $queueName) !== 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_QUEUE', "Invalid --queue name '{$queueName}'.");
+		}
 
-		$manager = new QueueManager();
-		$manager->ensureTables();
-		self::$pendingManager = $manager;
+		$rawSleep = trim((string) $input->getOption('sleep'));
+		if ($rawSleep === '' || !ctype_digit($rawSleep)) {
+			return $this->failCommand($output, $asJson, 'INVALID_SLEEP', 'Option --sleep must be a non-negative integer.');
+		}
+		$sleep = (int) $rawSleep;
+		if (!$once && $sleep < 1) {
+			$sleep = 1;
+		}
+
+		$rawTries = trim((string) $input->getOption('tries'));
+		if ($rawTries === '' || !ctype_digit($rawTries) || (int) $rawTries < 1) {
+			return $this->failCommand($output, $asJson, 'INVALID_TRIES', 'Option --tries must be a positive integer.');
+		}
+		$maxTries = (int) $rawTries;
+
+		$rawMemory = trim((string) $input->getOption('memory'));
+		if ($rawMemory === '' || !ctype_digit($rawMemory) || (int) $rawMemory < 16) {
+			return $this->failCommand($output, $asJson, 'INVALID_MEMORY', 'Option --memory must be an integer >= 16 (MB).');
+		}
+		$memoryLimit = ((int) $rawMemory) * 1024 * 1024;
+
+		try {
+			$manager = new QueueManager();
+			$manager->ensureTables();
+			self::$pendingManager = $manager;
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'QUEUE_ERROR', $e->getMessage());
+		}
 
 		$this->registerSignalHandlers($asJson);
 

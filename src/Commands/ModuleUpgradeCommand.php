@@ -57,8 +57,16 @@ final class ModuleUpgradeCommand extends Command
 				if (!$asJson) {
 					info("Upgrading module '{$name}'...");
 				}
-				// Loading an installed module after refresh triggers ProcessWire's native module version check and ___upgrade()
-				$modules->get($name);
+				// Loading with noInit + configOnly triggers ProcessWire's checkModuleVersion() / ___upgrade() without side-effect redirects in init()
+				$loaded = $modules->getModule($name, [
+					'noPermissionCheck' => true,
+					'noInit' => true,
+					'configOnly' => true,
+					'noInstall' => true,
+				]);
+				if ($loaded === null) {
+					return $this->failCommand($output, $asJson, 'UPGRADE_FAILED', "Failed to load module '{$name}' for upgrade check.");
+				}
 			} catch (\Throwable $e) {
 				return $this->failCommand($output, $asJson, 'UPGRADE_FAILED', "Upgrade step failed for '{$name}': " . $e->getMessage());
 			}

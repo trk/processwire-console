@@ -51,7 +51,10 @@ final class BackupPurgeCommand extends Command
 		$dir = \ProcessWire\wire('config')->paths->assets . 'backups/database/';
 		if (!is_dir($dir)) {
 			if ($asJson) {
-				return $this->outputJsonSuccess($output, ['deleted' => 0, 'files' => []]);
+				return $this->outputJsonSuccess(
+					$output,
+					$dryRun ? ['dryRun' => true, 'wouldDelete' => 0, 'files' => []] : ['deleted' => 0, 'files' => []]
+				);
 			}
 			warning("Directory not found: {$dir}");
 			return Command::SUCCESS;

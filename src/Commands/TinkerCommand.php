@@ -48,7 +48,7 @@ final class TinkerCommand extends Command
 
 		if ($code !== null && $code !== '') {
 			try {
-				$echoed = $this->runCode((string) $code, $asJson ? null : $output);
+				$echoed = $this->runCode((string) $code, $asJson ? null : $output, true);
 				if ($asJson) {
 					return $this->outputJsonSuccess($output, ['output' => $echoed]);
 				}
@@ -111,11 +111,17 @@ final class TinkerCommand extends Command
 			'wire',
 		];
 
-		foreach ($apiVariables as $apiVar) {
-			if (!isset(self::$state[$apiVar])) {
-				$apiVal = \ProcessWire\wire($apiVar);
-				if ($apiVal !== null) {
-					self::$state[$apiVar] = $apiVal;
+		if (
+			class_exists('\\ProcessWire\\ProcessWire', false)
+			&& \ProcessWire\ProcessWire::getCurrentInstance() !== null
+			&& function_exists('ProcessWire\\wire')
+		) {
+			foreach ($apiVariables as $apiVar) {
+				if (!isset(self::$state[$apiVar])) {
+					$apiVal = \ProcessWire\wire($apiVar);
+					if ($apiVal !== null) {
+						self::$state[$apiVar] = $apiVal;
+					}
 				}
 			}
 		}

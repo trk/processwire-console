@@ -22,6 +22,7 @@ final class DbSeedCommand extends Command
 			->setName('db:seed')
 			->setDescription('Seed the database with records.')
 			->addOption('class', null, InputOption::VALUE_REQUIRED, 'The class name of the root seeder', 'DatabaseSeeder')
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview seeders that would run without mutating the database')
 			->addOption('force', 'f', InputOption::VALUE_NONE, 'Force the operation to run')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
 	}
@@ -29,11 +30,45 @@ final class DbSeedCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$className = trim((string) $input->getOption('class'));
+		$dryRun = (bool) $input->getOption('dry-run');
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
 
 		if (!$this->isValidIdentifier($className)) {
 			return $this->failCommand($output, $asJson, 'INVALID_CLASS', "Invalid seeder class name '{$className}'.");
+		}
+
+		$wire = \ProcessWire\wire();
+		if (!($wire instanceof \ProcessWire\ProcessWire)) {
+			return $this->failCommand($output, $asJson, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
+		}
+
+		try {
+			$discoverer = new FeatureDiscoverer($wire);
+			$seeders = $discoverer->discoverClasses('seeders', '*Seeder.php', Seeder::class);
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SEED_ERROR', $e->getMessage());
+		}
+
+		if ($className !== 'DatabaseSeeder' && !isset($seeders[$className])) {
+			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Seeder class not found: {$className}");
+		}
+
+		if ($seeders === []) {
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['seeded' => [], 'message' => 'No seeders found.']);
+			}
+			\Laravel\Prompts\warning('No seeders found in site/seeders or modules.');
+			return Command::SUCCESS;
+		}
+
+		$planned = isset($seeders[$className]) ? [$className] : array_keys($seeders);
+		if ($dryRun) {
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['seeders' => $planned, 'dryRun' => true]);
+			}
+			\Laravel\Prompts\note('Dry-run: would run seeder(s): ' . implode(', ', $planned) . '.');
+			return Command::SUCCESS;
 		}
 
 		if (!$force) {
@@ -44,26 +79,6 @@ final class DbSeedCommand extends Command
 				\Laravel\Prompts\warning('Seeding cancelled.');
 				return Command::SUCCESS;
 			}
-		}
-
-		$wire = \ProcessWire\wire();
-		if (!($wire instanceof \ProcessWire\ProcessWire)) {
-			return $this->failCommand($output, $asJson, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
-		}
-
-		$discoverer = new FeatureDiscoverer($wire);
-		$seeders = $discoverer->discoverClasses('seeders', '*Seeder.php', Seeder::class);
-
-		if ($seeders === []) {
-			if ($asJson) {
-				return $this->outputJsonSuccess($output, ['seeded' => [], 'message' => 'No seeders found.']);
-			}
-			\Laravel\Prompts\warning('No seeders found in site/seeders or modules.');
-			return Command::SUCCESS;
-		}
-
-		if ($className !== 'DatabaseSeeder' && !isset($seeders[$className])) {
-			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Seeder class not found: {$className}");
 		}
 
 		$seeded = [];

@@ -66,17 +66,18 @@ final class ModuleUninstallCommand extends Command
 			return $this->failCommand($output, $asJson, 'PERMANENT_MODULE', "Module '{$name}' is marked permanent and cannot be uninstalled.");
 		}
 
-		$requiredBy = isset($info['requiredBy']) && is_array($info['requiredBy']) ? $info['requiredBy'] : [];
-		$installedDependents = array_values(array_filter(
-			array_map('strval', $requiredBy),
-			static fn(string $dep): bool => (bool) $modules->isInstalled($dep)
-		));
-		if ($installedDependents !== []) {
+		$uninstallReason = $modules->isUninstallable($name, true);
+		if ($uninstallReason !== true) {
+			$reasonText = is_string($uninstallReason) && $uninstallReason !== ''
+				? $uninstallReason
+				: "Module '{$name}' cannot be uninstalled.";
+			$errorCode = str_contains(strtolower($reasonText), 'required by') ? 'MODULE_REQUIRED_BY' : 'NOT_UNINSTALLABLE';
+
 			return $this->failCommand(
 				$output,
 				$asJson,
-				'MODULE_REQUIRED_BY',
-				"Module '{$name}' cannot be uninstalled because it is required by: " . implode(', ', $installedDependents)
+				$errorCode,
+				"Module '{$name}' cannot be uninstalled: {$reasonText}"
 			);
 		}
 

@@ -42,10 +42,18 @@ final class MigrateRollbackCommand extends Command
 			$steps = (int) $stepStr;
 		}
 
-		$migrator = new Migrator();
+		try {
+			$migrator = new Migrator();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'ROLLBACK_FAILED', $e->getMessage());
+		}
 
 		if ($dryRun) {
-			$names = $migrator->getPendingRollback($steps);
+			try {
+				$names = $migrator->getPendingRollback($steps);
+			} catch (\Throwable $e) {
+				return $this->failCommand($output, $asJson, 'ROLLBACK_FAILED', $e->getMessage());
+			}
 			$data = ['toRollback' => $names, 'count' => count($names)];
 
 			if ($asJson) {
@@ -76,9 +84,13 @@ final class MigrateRollbackCommand extends Command
 			\Laravel\Prompts\info('Rolling back migrations...');
 		}
 
-		$result = $steps > 0
-			? $migrator->rollbackSteps($steps)
-			: $migrator->rollbackLastBatch();
+		try {
+			$result = $steps > 0
+				? $migrator->rollbackSteps($steps)
+				: $migrator->rollbackLastBatch();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'ROLLBACK_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			if (!empty($result['errors'])) {

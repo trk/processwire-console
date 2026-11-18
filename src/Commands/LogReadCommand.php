@@ -94,8 +94,13 @@ final class LogReadCommand extends Command
 			$options['text'] = (string) $find;
 		}
 
+		$logFilePath = \ProcessWire\wire('config')->paths->logs . $name . '.txt';
+		if (is_link($logFilePath)) {
+			return $this->failCommand($output, $asJson, 'INVALID_TARGET', 'Refusing to read symbolic link log file.');
+		}
+
 		$log = wire('log');
-		$entries = array_values($log->getEntries($name, $options));
+		$entries = is_file($logFilePath) ? array_values($log->getEntries($name, $options)) : [];
 
 		if ($entries === []) {
 			if ($asJson) {

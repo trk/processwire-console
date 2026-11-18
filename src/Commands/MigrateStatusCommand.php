@@ -27,8 +27,12 @@ final class MigrateStatusCommand extends Command
 	{
 		$asJson = (bool) $input->getOption('json');
 
-		$migrator = new Migrator();
-		$status = $migrator->getStatus();
+		try {
+			$migrator = new Migrator();
+			$status = $migrator->getStatus();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'MIGRATION_FAILED', $e->getMessage());
+		}
 
 		if (empty($status)) {
 			if ($asJson) {

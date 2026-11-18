@@ -20,14 +20,33 @@ final class MigrateFreshCommand extends Command
 		$this
 			->setName('migrate:fresh')
 			->setDescription('Drop the migrations table and re-run all migrations from scratch.')
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview migrations that would run without mutating the database')
 			->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
+		$dryRun = (bool) $input->getOption('dry-run');
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
+
+		if ($dryRun) {
+			try {
+				$migrator = new Migrator();
+				$wouldApply = array_values(array_map(
+					static fn(array $row): string => $row['name'],
+					array_filter($migrator->getStatus(), static fn(array $row): bool => $row['status'] !== 'missing')
+				));
+			} catch (\Throwable $e) {
+				return $this->failCommand($output, $asJson, 'FRESH_FAILED', $e->getMessage());
+			}
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['wouldApply' => $wouldApply, 'dryRun' => true]);
+			}
+			\Laravel\Prompts\note('Dry-run: would drop migrations table and apply ' . count($wouldApply) . ' migration(s).');
+			return Command::SUCCESS;
+		}
 
 		if (!$force) {
 			if ($asJson || !$input->isInteractive()) {
@@ -39,13 +58,17 @@ final class MigrateFreshCommand extends Command
 			}
 		}
 
-		$migrator = new Migrator();
+		try {
+			$migrator = new Migrator();
 
-		if (!$asJson) {
-			\Laravel\Prompts\info('Dropping migrations table and running all migrations...');
+			if (!$asJson) {
+				\Laravel\Prompts\info('Dropping migrations table and running all migrations...');
+			}
+
+			$result = $migrator->fresh();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'FRESH_FAILED', $e->getMessage());
 		}
-
-		$result = $migrator->fresh();
 
 		if ($asJson) {
 			if (!empty($result['errors'])) {

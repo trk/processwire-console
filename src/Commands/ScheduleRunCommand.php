@@ -33,8 +33,12 @@ final class ScheduleRunCommand extends Command
 			return $this->failCommand($output, $asJson, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
 		}
 
-		$discoverer = new FeatureDiscoverer($wire);
-		$tasks = $discoverer->discoverClasses('schedule', '*Task.php', Task::class);
+		try {
+			$discoverer = new FeatureDiscoverer($wire);
+			$tasks = $discoverer->discoverClasses('schedule', '*Task.php', Task::class);
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SCHEDULE_FAILED', $e->getMessage());
+		}
 
 		if ($tasks === []) {
 			if ($asJson) {

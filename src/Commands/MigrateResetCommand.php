@@ -20,14 +20,30 @@ final class MigrateResetCommand extends Command
 		$this
 			->setName('migrate:reset')
 			->setDescription('Rollback all applied migrations.')
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview applied migrations that would be rolled back')
 			->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
+		$dryRun = (bool) $input->getOption('dry-run');
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
+
+		if ($dryRun) {
+			try {
+				$migrator = new Migrator();
+				$reversed = $migrator->getResetOrder();
+			} catch (\Throwable $e) {
+				return $this->failCommand($output, $asJson, 'RESET_FAILED', $e->getMessage());
+			}
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['wouldRollback' => $reversed, 'dryRun' => true]);
+			}
+			\Laravel\Prompts\note('Dry-run: would rollback ' . count($reversed) . ' migration(s).');
+			return Command::SUCCESS;
+		}
 
 		if (!$force) {
 			if ($asJson || !$input->isInteractive()) {
@@ -39,12 +55,16 @@ final class MigrateResetCommand extends Command
 			}
 		}
 
-		$migrator = new Migrator();
+		try {
+			$migrator = new Migrator();
 
-		if (!$asJson) {
-			\Laravel\Prompts\info('Resetting all migrations...');
+			if (!$asJson) {
+				\Laravel\Prompts\info('Resetting all migrations...');
+			}
+			$result = $migrator->reset();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'RESET_FAILED', $e->getMessage());
 		}
-		$result = $migrator->reset();
 
 		if ($asJson) {
 			if (!empty($result['errors'])) {

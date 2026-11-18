@@ -75,13 +75,17 @@ final class MakeTestCommand extends Command
 			$targetDir = rtrim((string) $config->paths->site, '/') . '/tests/' . $subFolder;
 		}
 
+		if (is_link(rtrim($targetDir, '/'))) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Refusing to write into symbolic link directory: {$targetDir}");
+		}
+
 		if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
 			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to create directory: {$targetDir}");
 		}
 
 		$filePath = $targetDir . $name . '.php';
 
-		if (file_exists($filePath)) {
+		if (file_exists($filePath) || is_link($filePath)) {
 			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "Test file already exists: {$name}.php");
 		}
 
@@ -131,6 +135,10 @@ final class MakeTestCommand extends Command
 			$targetDir = $sitePath . '/tests/e2e/';
 		}
 
+		if (is_link(rtrim($targetDir, '/'))) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Refusing to write into symbolic link directory: {$targetDir}");
+		}
+
 		if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
 			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to create directory: {$targetDir}");
 		}
@@ -138,7 +146,7 @@ final class MakeTestCommand extends Command
 		$fileName = $slug . '.spec.ts';
 		$filePath = $targetDir . $fileName;
 
-		if (file_exists($filePath)) {
+		if (file_exists($filePath) || is_link($filePath)) {
 			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "E2E spec file already exists: {$fileName}");
 		}
 

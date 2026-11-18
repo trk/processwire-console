@@ -23,12 +23,14 @@ final class LogClearAllCommand extends Command
 		$this
 			->setName('log:clear-all')
 			->setDescription('Clear all ProcessWire log files.')
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output')
 			->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
+		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
@@ -37,9 +39,21 @@ final class LogClearAllCommand extends Command
 
 		if ($logs === []) {
 			if ($asJson) {
-				return $this->outputJsonSuccess($output, []);
+				return $this->outputJsonSuccess($output, $dryRun ? ['channels' => [], 'dryRun' => true] : ['channels' => [], 'cleared' => 0]);
 			}
 			note('No log files available to clear.');
+			return Command::SUCCESS;
+		}
+
+		if ($dryRun) {
+			$channels = array_values(array_filter(array_map(
+				fn($name): string => $this->normalizeLogChannel((string) $name),
+				array_keys($logs)
+			)));
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, ['channels' => $channels, 'dryRun' => true]);
+			}
+			note('Dry-run: would clear ' . count($channels) . ' log files.');
 			return Command::SUCCESS;
 		}
 
@@ -79,7 +93,7 @@ final class LogClearAllCommand extends Command
 
 		if ($asJson) {
 			return $allOk
-				? $this->outputJsonSuccess($output, $results)
+				? $this->outputJsonSuccess($output, ['channels' => $results, 'cleared' => count($results)])
 				: $this->outputJsonError($output, 'CLEAR_FAILED', 'Failed to clear some logs.');
 		}
 		if ($allOk) {

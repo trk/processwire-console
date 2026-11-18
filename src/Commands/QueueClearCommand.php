@@ -20,14 +20,30 @@ final class QueueClearCommand extends Command
 		$this
 			->setName('queue:clear')
 			->setDescription('Clear all failed jobs from the failed_jobs database table.')
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview failed job count without deleting')
 			->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
+		$dryRun = (bool) $input->getOption('dry-run');
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
+
+		if ($dryRun) {
+			try {
+				$manager = new QueueManager();
+				$count = $manager->countFailedJobs();
+				if ($asJson) {
+					return $this->outputJsonSuccess($output, ['wouldDelete' => $count, 'dryRun' => true]);
+				}
+				\Laravel\Prompts\note("Dry-run: would clear {$count} failed job(s).");
+				return Command::SUCCESS;
+			} catch (\Throwable $e) {
+				return $this->failCommand($output, $asJson, 'CLEAR_FAILED', 'Failed to inspect failed jobs: ' . $e->getMessage());
+			}
+		}
 
 		if (!$force) {
 			if ($asJson || !$input->isInteractive()) {

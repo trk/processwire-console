@@ -37,15 +37,28 @@ final class CacheWireClearCommand extends Command
 			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --key or --pattern.');
 		}
 
-		if ($key !== '') {
-			$deleted = \ProcessWire\wire('cache')->delete($key) ? 1 : 0;
-		} else {
+		try {
 			$db = \ProcessWire\wire('database');
 			$table = '`' . $db->escapeTable('caches') . '`';
-			$stmt = $db->prepare("DELETE FROM {$table} WHERE name LIKE :p");
-			$stmt->bindValue(':p', $pattern);
-			$stmt->execute();
-			$deleted = $stmt->rowCount();
+			$reserved = defined('\\ProcessWire\\WireCache::expireReserved')
+				? \ProcessWire\WireCache::expireReserved
+				: '2010-04-08 03:10:01';
+
+			if ($key !== '') {
+				$stmt = $db->prepare("DELETE FROM {$table} WHERE name = :k AND expires != :reserved");
+				$stmt->bindValue(':k', $key);
+				$stmt->bindValue(':reserved', $reserved);
+				$stmt->execute();
+				$deleted = $stmt->rowCount();
+			} else {
+				$stmt = $db->prepare("DELETE FROM {$table} WHERE name LIKE :p AND expires != :reserved");
+				$stmt->bindValue(':p', $pattern);
+				$stmt->bindValue(':reserved', $reserved);
+				$stmt->execute();
+				$deleted = $stmt->rowCount();
+			}
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'CACHE_ERROR', $e->getMessage());
 		}
 
 		$data = ['deleted' => $deleted, 'key' => $key, 'pattern' => $pattern];

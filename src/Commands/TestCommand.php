@@ -27,7 +27,6 @@ final class TestCommand extends Command
 		'--exclude-group',
 		'--covers',
 		'--uses',
-		'--process-isolation',
 		'--order-by',
 		'--random-order-seed',
 		'--log-junit',
@@ -39,7 +38,6 @@ final class TestCommand extends Command
 		'--coverage-crap4j',
 		'--coverage-html',
 		'--coverage-php',
-		'--coverage-text',
 		'--coverage-xml',
 		'--processes',
 		'--shard',
@@ -57,8 +55,13 @@ final class TestCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$asJson = (bool) $input->getOption('json') || in_array('--json', $_SERVER['argv'] ?? [], true);
-		$config = \ProcessWire\wire('config');
-		$projectRoot = dirname(rtrim($config->paths->site, '/'));
+		$config = class_exists('\\ProcessWire\\ProcessWire', false) && \ProcessWire\ProcessWire::getCurrentInstance() !== null
+			? \ProcessWire\wire('config')
+			: null;
+		if (!($config instanceof \ProcessWire\Config)) {
+			return $this->failCommand($output, $asJson, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
+		}
+		$projectRoot = dirname(rtrim((string) $config->paths->site, '/'));
 		$pestBinary = $projectRoot . '/vendor/bin/pest';
 
 		if (!file_exists($pestBinary)) {
@@ -90,7 +93,7 @@ final class TestCommand extends Command
 
 				// Inject ProcessWire Bootstrap to Pest.php if it exists
 				$pestConfigFile = $projectRoot . '/tests/Pest.php';
-				if (is_file($pestConfigFile)) {
+				if (is_file($pestConfigFile) && !is_link($pestConfigFile)) {
 					$bootstrapCode = "\n/*\n|--------------------------------------------------------------------------\n| ProcessWire Bootstrap\n|--------------------------------------------------------------------------\n|\n| Boot ProcessWire in CLI mode so `wire()` and API variables are available.\n|\n*/\nif (!class_exists('\\\\ProcessWire\\\\ProcessWire')) {\n\t\$_SERVER['HTTP_HOST'] ??= 'localhost';\n\trequire_once dirname(__DIR__) . '/wire/core/ProcessWire.php';\n\tnew \\ProcessWire\\ProcessWire(\\ProcessWire\\ProcessWire::buildConfig(dirname(__DIR__)));\n}\n";
 					$pestConfigContent = file_get_contents($pestConfigFile);
 					if ($pestConfigContent !== false && !str_contains($pestConfigContent, 'ProcessWire::buildConfig') && !str_contains($pestConfigContent, 'class_exists(\'\\ProcessWire')) {

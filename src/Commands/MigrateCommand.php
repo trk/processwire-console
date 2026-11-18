@@ -42,8 +42,12 @@ final class MigrateCommand extends Command
 			$steps = (int) $stepStr;
 		}
 
-		$migrator = new Migrator();
-		$pending = $migrator->getPending();
+		try {
+			$migrator = new Migrator();
+			$pending = $migrator->getPending();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'MIGRATION_FAILED', $e->getMessage());
+		}
 
 		if ($pending === []) {
 			if ($asJson) {
@@ -83,7 +87,11 @@ final class MigrateCommand extends Command
 		if (!$asJson) {
 			\Laravel\Prompts\info('Running migrations...');
 		}
-		$result = $migrator->runPending($steps);
+		try {
+			$result = $migrator->runPending($steps);
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'MIGRATION_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			if (!empty($result['errors'])) {

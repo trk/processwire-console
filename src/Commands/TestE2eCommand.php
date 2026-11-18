@@ -69,8 +69,11 @@ final class TestE2eCommand extends Command
 			);
 		}
 
-		$wire = \ProcessWire\wire();
-		$config = \ProcessWire\wire('config');
+		$wire = class_exists('\\ProcessWire\\ProcessWire', false) ? \ProcessWire\ProcessWire::getCurrentInstance() : null;
+		$config = $wire !== null ? \ProcessWire\wire('config') : null;
+		if (!($wire instanceof \ProcessWire\ProcessWire) || !($config instanceof \ProcessWire\Config)) {
+			return $this->failCommand($output, $asJson, 'ENV_NOT_FOUND', 'ProcessWire environment not found.');
+		}
 		$sitePath = rtrim((string) $config->paths->site, '/');
 		$projectRoot = dirname($sitePath);
 		$playwrightBinary = self::resolvePlaywrightBinaryPath($projectRoot);
@@ -105,7 +108,10 @@ final class TestE2eCommand extends Command
 				return Command::FAILURE;
 			}
 
-			$this->scaffoldPlaywrightFiles($projectRoot, $baseUrl, $adminUrl);
+			if ($this->scaffoldPlaywrightFiles($projectRoot, $baseUrl, $adminUrl) === null) {
+				\Laravel\Prompts\error('Failed to load Playwright stubs.');
+				return Command::FAILURE;
+			}
 		} elseif (!is_file($projectRoot . '/playwright.config.ts')) {
 			if ($asJson || !$input->isInteractive()) {
 				return $this->failCommand(
@@ -383,13 +389,13 @@ final class TestE2eCommand extends Command
 
 		foreach ($renderedMap as $relativeTarget => $content) {
 			$fullPath = rtrim($projectRoot, '/') . '/' . $relativeTarget;
-			if (file_exists($fullPath)) {
+			if (file_exists($fullPath) || is_link($fullPath)) {
 				$skipped[] = $relativeTarget;
 				continue;
 			}
 
 			$parentDir = dirname($fullPath);
-			if (!is_dir($parentDir) && !mkdir($parentDir, 0755, true) && !is_dir($parentDir)) {
+			if (is_link($parentDir) || (!is_dir($parentDir) && !mkdir($parentDir, 0755, true) && !is_dir($parentDir))) {
 				return null;
 			}
 
@@ -400,7 +406,7 @@ final class TestE2eCommand extends Command
 		}
 
 		$gitignorePath = rtrim($projectRoot, '/') . '/.gitignore';
-		if (is_file($gitignorePath) && is_writable($gitignorePath)) {
+		if (is_file($gitignorePath) && !is_link($gitignorePath) && is_writable($gitignorePath)) {
 			$gitignoreContent = (string) file_get_contents($gitignorePath);
 			$entriesToEnsure = ['/playwright-report', '/test-results', '/tests/e2e/.auth'];
 			$missingEntries = [];
@@ -497,21 +503,16 @@ final class TestE2eCommand extends Command
 			} elseif ($arg === '--init') {
 				$initOnly = true;
 			} elseif (str_starts_with($arg, '--module=')) {
-				$val = substr($arg, 9);
-				if ($val !== '') {
-					$module = $val;
-				}
+				$module = substr($arg, 9);
 			} elseif (str_starts_with($arg, '-m=')) {
-				$val = substr($arg, 3);
-				if ($val !== '') {
-					$module = $val;
+				$module = substr($arg, 3);
+			} elseif ($arg === '--module' || $arg === '-m') {
+				if (isset($argv[$i + 1]) && !str_starts_with((string) $argv[$i + 1], '-')) {
+					$module = (string) $argv[$i + 1];
+					$i++;
+				} else {
+					$module = '';
 				}
-			} elseif (($arg === '--module' || $arg === '-m') && isset($argv[$i + 1])) {
-				$val = (string) $argv[$i + 1];
-				if ($val !== '' && !str_starts_with($val, '-')) {
-					$module = $val;
-				}
-				$i++;
 			}
 		}
 
@@ -575,7 +576,9 @@ final class TestE2eCommand extends Command
 
 			if ($skipNext) {
 				$skipNext = false;
-				continue;
+				if (!str_starts_with($arg, '-')) {
+					continue;
+				}
 			}
 
 			if (in_array($arg, ['--json', '--init', '--no-interaction', '-n', '--ansi', '--no-ansi', '-q', '--quiet'], true)) {

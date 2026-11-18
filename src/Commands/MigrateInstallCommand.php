@@ -26,8 +26,12 @@ final class MigrateInstallCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$asJson = (bool) $input->getOption('json');
-		$migrator = new Migrator();
-		$created = $migrator->install();
+		try {
+			$migrator = new Migrator();
+			$created = $migrator->install();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'MIGRATION_FAILED', $e->getMessage());
+		}
 
 		if (!$created) {
 			if ($asJson) {

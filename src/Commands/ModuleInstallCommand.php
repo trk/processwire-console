@@ -28,11 +28,12 @@ final class ModuleInstallCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$name = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
+		$rawName = $input->getOption('name');
+		$name = ($rawName !== null && $rawName !== '') ? trim((string) $rawName) : '';
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 
-		if ($name === '' && $this->canPrompt($input, $asJson)) {
+		if ($rawName === null && $this->canPrompt($input, $asJson)) {
 			$name = $this->searchInstallableModule('Select a module to install');
 			if ($name === '') {
 				return Command::SUCCESS;
@@ -49,8 +50,15 @@ final class ModuleInstallCommand extends Command
 
 		$modules = \ProcessWire\wire('modules');
 		$installed = $modules->isInstalled($name);
+		if (!$installed && (!$modules->getModuleFile($name) || !$modules->isInstallable($name))) {
+			$modules->refresh();
+			$installed = $modules->isInstalled($name);
+		}
 		if (!$installed && !$modules->getModuleFile($name)) {
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Module not found: {$name}");
+		}
+		if (!$installed && !$modules->isInstallable($name)) {
+			return $this->failCommand($output, $asJson, 'NOT_INSTALLABLE', "Module '{$name}' is not currently installable (check module requirements).");
 		}
 
 		$result = ['name' => $name, 'alreadyInstalled' => $installed, 'dryRun' => $dryRun];
@@ -75,7 +83,10 @@ final class ModuleInstallCommand extends Command
 			if (!$asJson) {
 				info("Installing module '{$name}'...");
 			}
-			$modules->install($name);
+			$installedModule = $modules->install($name);
+			if ($installedModule === null || !$modules->isInstalled($name)) {
+				return $this->failCommand($output, $asJson, 'INSTALL_FAILED', "ProcessWire failed to install module '{$name}'.");
+			}
 		} catch (\Throwable $e) {
 			return $this->failCommand($output, $asJson, 'INSTALL_FAILED', "Install failed for module '{$name}': " . $e->getMessage());
 		}

@@ -20,14 +20,39 @@ final class MigrateRefreshCommand extends Command
 		$this
 			->setName('migrate:refresh')
 			->setDescription('Reset all migrations and re-run them (rollback + migrate).')
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Preview rollback and re-apply plan without mutating the database')
 			->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output');
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
+		$dryRun = (bool) $input->getOption('dry-run');
 		$force = (bool) $input->getOption('force');
 		$asJson = (bool) $input->getOption('json');
+
+		if ($dryRun) {
+			try {
+				$migrator = new Migrator();
+				$wouldRollback = $migrator->getResetOrder();
+				$status = $migrator->getStatus();
+			} catch (\Throwable $e) {
+				return $this->failCommand($output, $asJson, 'REFRESH_FAILED', $e->getMessage());
+			}
+			$wouldApply = array_values(array_map(
+				static fn(array $row): string => $row['name'],
+				array_filter($status, static fn(array $row): bool => $row['status'] !== 'missing')
+			));
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, [
+					'wouldRollback' => $wouldRollback,
+					'wouldApply' => $wouldApply,
+					'dryRun' => true,
+				]);
+			}
+			\Laravel\Prompts\note('Dry-run: would rollback ' . count($wouldRollback) . ' and apply ' . count($wouldApply) . ' migration(s).');
+			return Command::SUCCESS;
+		}
 
 		if (!$force) {
 			if ($asJson || !$input->isInteractive()) {
@@ -39,12 +64,16 @@ final class MigrateRefreshCommand extends Command
 			}
 		}
 
-		$migrator = new Migrator();
+		try {
+			$migrator = new Migrator();
 
-		if (!$asJson) {
-			\Laravel\Prompts\info('Rolling back all migrations...');
+			if (!$asJson) {
+				\Laravel\Prompts\info('Rolling back all migrations...');
+			}
+			$resetResult = $migrator->reset();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'REFRESH_FAILED', $e->getMessage());
 		}
-		$resetResult = $migrator->reset();
 
 		if (!$asJson && !empty($resetResult['rolledBack'])) {
 			\Laravel\Prompts\note('Rolling back');
@@ -66,7 +95,11 @@ final class MigrateRefreshCommand extends Command
 		if (!$asJson) {
 			\Laravel\Prompts\info('Running all migrations...');
 		}
-		$migrateResult = $migrator->runPending();
+		try {
+			$migrateResult = $migrator->runPending();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'MIGRATION_FAILED', $e->getMessage());
+		}
 
 		if (!$asJson && !empty($migrateResult['applied'])) {
 			\Laravel\Prompts\note('Migrating');

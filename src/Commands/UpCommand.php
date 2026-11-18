@@ -33,7 +33,7 @@ final class UpCommand extends Command
 		try {
 			$file = $wire->config->paths->site . 'down.json';
 
-			if (!file_exists($file)) {
+			if (!file_exists($file) && !is_link($file)) {
 				if ($json) {
 					return $this->outputJsonSuccess($output, ['message' => 'Application is already up.']);
 				}
@@ -41,7 +41,7 @@ final class UpCommand extends Command
 				return Command::SUCCESS;
 			}
 
-			if (!@unlink($file) && file_exists($file)) {
+			if (!@unlink($file) && (file_exists($file) || is_link($file))) {
 				throw new \RuntimeException("Unable to delete {$file}.");
 			}
 

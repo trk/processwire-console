@@ -48,14 +48,12 @@ final class DbRestoreCommand extends Command
 			? $assetsDir . basename($file)
 			: $file;
 		$realFile = realpath($candidatePath);
-		if ($realFile === false && basename($file) === $file) {
-			$realFile = realpath($assetsDir . $file);
-		}
 
 		if (
-			$realFile === false
+			is_link($candidatePath)
+			|| $realFile === false
 			|| $realAssetsDir === false
-			|| !str_starts_with($realFile, rtrim($realAssetsDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)
+			|| dirname($realFile) !== rtrim($realAssetsDir, DIRECTORY_SEPARATOR)
 			|| !is_file($realFile)
 			|| !is_readable($realFile)
 		) {

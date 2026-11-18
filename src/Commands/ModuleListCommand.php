@@ -41,7 +41,7 @@ final class ModuleListCommand extends Command
 
 		foreach ($installed as $name => $module) {
 			$modName = (string) $name;
-			$info = $modules->getModuleInfo($modName);
+			$info = $modules->getModuleInfoVerbose($modName);
 			$moduleFile = str_replace('\\', '/', (string) $modules->getModuleFile($modName));
 			$isCore = str_contains($moduleFile, '/wire/modules/');
 
@@ -52,7 +52,7 @@ final class ModuleListCommand extends Command
 				continue;
 			}
 
-			if ($search && (stripos($modName, (string) $search) === false && stripos((string) ($info['title'] ?? ''), (string) $search) === false)) {
+			if ($search !== null && $search !== '' && (stripos($modName, (string) $search) === false && stripos((string) ($info['title'] ?? ''), (string) $search) === false)) {
 				continue;
 			}
 

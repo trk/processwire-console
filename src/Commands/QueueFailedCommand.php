@@ -63,7 +63,7 @@ final class QueueFailedCommand extends Command
 			}
 
 			if ($asJson) {
-				return $this->outputJsonSuccess($output, ['items' => $items, 'total' => count($items)]);
+				return $this->outputJsonSuccess($output, ['items' => $items, 'total' => $manager->countFailedJobs()]);
 			}
 
 			\Laravel\Prompts\table(

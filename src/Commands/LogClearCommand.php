@@ -24,6 +24,7 @@ final class LogClearCommand extends Command
 			->setName('log:clear')
 			->setDescription('Clear a ProcessWire log file.')
 			->addArgument('name', InputArgument::IS_ARRAY, 'The name of the logs (e.g. errors messages)', [])
+			->addOption('dry-run', null, InputOption::VALUE_NONE, 'Do not write changes')
 			->addOption('json', null, InputOption::VALUE_NONE, 'JSON output')
 			->addOption('force', 'f', InputOption::VALUE_NONE, 'Skip interactive confirmations');
 	}
@@ -31,6 +32,7 @@ final class LogClearCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$names = array_values(array_map('strval', (array) $input->getArgument('name')));
+		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
@@ -42,11 +44,45 @@ final class LogClearCommand extends Command
 			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide at least one log name.');
 		}
 
+		$logsDir = (string) \ProcessWire\wire('config')->paths->logs;
+		$realLogsDir = realpath($logsDir);
+		$resolvedTargets = [];
+
+		foreach ($names as $name) {
+			$file = $this->normalizeLogChannel($name);
+			if ($file === '') {
+				return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid log name: {$name}");
+			}
+
+			$path = $logsDir . $file . '.txt';
+			$realPath = realpath($path);
+			if (
+				!is_file($path)
+				|| is_link($path)
+				|| $realLogsDir === false
+				|| $realPath === false
+				|| !str_starts_with($realPath, rtrim($realLogsDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR)
+			) {
+				return $this->failCommand($output, $asJson, 'NOT_FOUND', "Log file not found: {$file}");
+			}
+
+			$resolvedTargets[$file] = $realPath;
+		}
+
+		if ($dryRun) {
+			$preview = ['channels' => array_keys($resolvedTargets), 'dryRun' => true];
+			if ($asJson) {
+				return $this->outputJsonSuccess($output, $preview);
+			}
+			note('Dry-run: would clear logs: ' . implode(', ', array_keys($resolvedTargets)) . '.');
+			return Command::SUCCESS;
+		}
+
 		if (!$force) {
 			if ($asJson || !$input->isInteractive()) {
 				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Use --force to run log:clear non-interactively.');
 			}
-			$list = implode(', ', $names);
+			$list = implode(', ', array_keys($resolvedTargets));
 			if (!confirm("Clear log files '{$list}'?", false)) {
 				note('Aborted.');
 				return Command::SUCCESS;
@@ -55,30 +91,9 @@ final class LogClearCommand extends Command
 
 		$results = [];
 		$allOk = true;
-		$logsDir = \ProcessWire\wire('config')->paths->logs;
 
-		foreach ($names as $name) {
-			$file = $this->normalizeLogChannel($name);
-			if ($file === '') {
-				if (!$asJson) {
-					error("Invalid log name: {$name}");
-				}
-				$results[$name] = false;
-				$allOk = false;
-				continue;
-			}
-
-			$path = $logsDir . $file . '.txt';
-			if (!is_file($path) || is_link($path)) {
-				if (!$asJson) {
-					error("Log file not found: {$path}");
-				}
-				$results[$file] = false;
-				$allOk = false;
-				continue;
-			}
-
-			$ok = @file_put_contents($path, '') !== false;
+		foreach ($resolvedTargets as $file => $realPath) {
+			$ok = @file_put_contents($realPath, '') !== false;
 			$results[$file] = $ok;
 			if (!$ok) {
 				$allOk = false;

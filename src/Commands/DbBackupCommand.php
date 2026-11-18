@@ -35,7 +35,11 @@ final class DbBackupCommand extends Command
 			info('Creating database backup...');
 		}
 
-		$file = $backup->backup();
+		try {
+			$file = $backup->backup();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'BACKUP_FAILED', 'Database backup failed: ' . $e->getMessage());
+		}
 
 		if ($file) {
 			if ($asJson) {
@@ -45,6 +49,9 @@ final class DbBackupCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		return $this->failCommand($output, $asJson, 'BACKUP_FAILED', 'Database backup failed.');
+		$errs = $backup->errors();
+		$detail = ($errs !== []) ? ': ' . implode('; ', $errs) : '.';
+
+		return $this->failCommand($output, $asJson, 'BACKUP_FAILED', 'Database backup failed' . $detail);
 	}
 }

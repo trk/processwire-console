@@ -87,13 +87,17 @@ final class MakeMigrationCommand extends Command
 		if ($moduleOpt !== null && $type !== 'install-module') {
 			$config = \ProcessWire\wire('config');
 			$targetDir = rtrim((string) $config->paths->siteModules, '/') . '/' . $moduleOpt . '/migrations/';
-			if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
-				return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to create directory: {$targetDir}");
-			}
 		} else {
 			$migrator = new Migrator();
-			$migrator->ensureMigrationsDirectory();
 			$targetDir = $migrator->getMigrationsPath();
+		}
+
+		if (is_link(rtrim($targetDir, '/'))) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Refusing to write into symbolic link directory: {$targetDir}");
+		}
+
+		if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to create directory: {$targetDir}");
 		}
 
 		$safeName = (string) preg_replace('/[^a-z0-9_]/', '_', strtolower($name));
@@ -101,7 +105,7 @@ final class MakeMigrationCommand extends Command
 		$fileName = date('YmdHis', $baseEpoch) . "_{$safeName}.php";
 		$filePath = $targetDir . $fileName;
 
-		while (file_exists($filePath)) {
+		while (file_exists($filePath) || is_link($filePath)) {
 			$baseEpoch++;
 			$fileName = date('YmdHis', $baseEpoch) . "_{$safeName}.php";
 			$filePath = $targetDir . $fileName;

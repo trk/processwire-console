@@ -26,11 +26,15 @@ final class ModuleRefreshCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$name = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
+		$rawName = $input->getOption('name');
 		$asJson = (bool) $input->getOption('json');
+		$name = '';
 
-		if ($name !== '' && !$this->isValidIdentifier($name)) {
-			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid module class name '{$name}'.");
+		if ($rawName !== null) {
+			$name = trim((string) $rawName);
+			if (!$this->isValidIdentifier($name)) {
+				return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid module class name '{$name}'.");
+			}
 		}
 
 		$modules = \ProcessWire\wire('modules');

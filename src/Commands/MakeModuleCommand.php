@@ -80,7 +80,7 @@ final class MakeModuleCommand extends Command
 		$modulesPath = (string) \ProcessWire\wire('config')->paths->siteModules;
 		$modulePath = $modulesPath . $name;
 
-		if (is_dir($modulePath)) {
+		if (file_exists($modulePath) || is_link($modulePath)) {
 			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "Module directory '{$name}' already exists.");
 		}
 
@@ -93,21 +93,28 @@ final class MakeModuleCommand extends Command
 		$sanitizeInline = static fn(string $val): string => trim(str_replace(['*/', "\r", "\n"], ['* /', ' ', ' '], $val));
 		$escapeSingle = static fn(string $val): string => addcslashes($sanitizeInline($val), "\\'");
 
-		$content = $this->loadStub($stubFile, [
+		$kebabBase = strtolower((string) preg_replace('/(?<!^)[A-Z]/', '-$0', $baseName));
+		$slugName = trim((string) preg_replace('/[^a-z0-9_-]+/', '-', $kebabBase), '-');
+		if ($slugName === '') {
+			$slugName = strtolower($name);
+		}
+
+		$replacements = [
 			'{{className}}' => $name,
 			'{{baseName}}' => $baseName,
 			'{{title}}' => $escapeSingle($title),
 			'{{summary}}' => $escapeSingle($summary),
 			'{{author}}' => $escapeSingle($author),
-			'{{name}}' => $escapeSingle((string) preg_replace('/[^a-z0-9_-]/', '-', strtolower($name))),
+			'{{name}}' => $escapeSingle($slugName),
 			"'version' => '0.0.1'" => "'version' => '" . $escapeSingle($version) . "'",
-		]);
-		if ($content === null) {
-			return $this->failCommand($output, $asJson, 'STUB_NOT_FOUND', "Stub file not found: {$stubFile}");
+		];
+		if ($type === 'module' && !$autoloadFlag) {
+			$replacements["'autoload' => true"] = "'autoload' => false";
 		}
 
-		if ($type === 'module' && !$autoloadFlag) {
-			$content = str_replace("'autoload' => true", "'autoload' => false", $content);
+		$content = $this->loadStub($stubFile, $replacements);
+		if ($content === null) {
+			return $this->failCommand($output, $asJson, 'STUB_NOT_FOUND', "Stub file not found: {$stubFile}");
 		}
 
 		if (!mkdir($modulePath, 0755, true) && !is_dir($modulePath)) {
