@@ -3,8 +3,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "composer.json"
   workflow_dispatch:
 
 jobs:
@@ -18,30 +16,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.4"
-          extensions: ctype, json, mbstring, pdo
-          coverage: none
-
-      - name: Install dependencies & verify quality gate
-        run: |
-          composer install --no-interaction --prefer-dist
-          composer analyse
-          composer test
-
-      - name: Configure Git User
-        env:
-          GIT_ACTOR: ${{ github.actor }}
-        run: |
-          git config user.name "${GIT_ACTOR}"
-          git config user.email "${GIT_ACTOR}@users.noreply.github.com"
-
       - name: Extract version from composer.json
         id: get_version
         run: |
-          VERSION=$(php -r "echo json_decode(file_get_contents('composer.json'))->version ?? '';")
+          VERSION=$(jq -r '.version // empty' composer.json)
 
           if [ -z "$VERSION" ]; then
             echo "::error::Could not find 'version' field in composer.json"
@@ -67,6 +45,29 @@ jobs:
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Setup PHP
+        if: steps.check_tag.outputs.exists == 'false'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: ctype, json, mbstring, pdo
+          coverage: none
+
+      - name: Install dependencies & verify quality gate
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          composer install --no-interaction --prefer-dist
+          composer analyse
+          composer test
+
+      - name: Configure Git User
+        if: steps.check_tag.outputs.exists == 'false'
+        env:
+          GIT_ACTOR: ${{ github.actor }}
+        run: |
+          git config user.name "${GIT_ACTOR}"
+          git config user.email "${GIT_ACTOR}@users.noreply.github.com"
 
       - name: Create Git Tag and GitHub Release
         if: steps.check_tag.outputs.exists == 'false'
