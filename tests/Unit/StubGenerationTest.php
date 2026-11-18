@@ -168,6 +168,9 @@ final class StubGenerationTest extends TestCase
 				$this->assertStringContainsString('sanitizer->entities(', $rendered);
 			}
 
+			if ($stubFile === 'pest.stub') {
+				$this->assertStringStartsWith('<?php // __(file-not-translatable)', $rendered);
+			}
 		}
 	}
 
