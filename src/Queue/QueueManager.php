@@ -44,7 +44,7 @@ final class QueueManager
 	 */
 	public function ensureTables(): void
 	{
-		['engine' => $engine, 'charset' => $charset] = FeatureDiscoverer::resolveStorageTableOptions();
+		['charset' => $charset] = FeatureDiscoverer::resolveStorageTableOptions();
 
 		$jobs = $this->jobsTable;
 		$failed = $this->failedTable;
@@ -60,7 +60,7 @@ final class QueueManager
 				created_at INT UNSIGNED NOT NULL,
 				PRIMARY KEY (id),
 				INDEX queue (queue)
-			) ENGINE={$engine} DEFAULT CHARSET={$charset};
+			) ENGINE=InnoDB DEFAULT CHARSET={$charset};
 		");
 
 		$this->db->exec("
@@ -71,7 +71,7 @@ final class QueueManager
 				exception LONGTEXT NOT NULL,
 				failed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				PRIMARY KEY (id)
-			) ENGINE={$engine} DEFAULT CHARSET={$charset};
+			) ENGINE=InnoDB DEFAULT CHARSET={$charset};
 		");
 	}
 
@@ -254,10 +254,7 @@ final class QueueManager
 	 */
 	public function retryJob(int $id): bool
 	{
-		$job = $this->getFailedJob($id);
-		if ($job === null) {
-			return false;
-		}
+		$this->ensureTables();
 
 		$jobs = $this->jobsTable;
 		$failed = $this->failedTable;
@@ -265,6 +262,14 @@ final class QueueManager
 
 		$this->db->beginTransaction();
 		try {
+			$select = $this->db->prepare("SELECT * FROM `{$failed}` WHERE id = :id LIMIT 1 FOR UPDATE");
+			$select->execute([':id' => $id]);
+			$job = $select->fetch(PDO::FETCH_ASSOC);
+			if (!is_array($job)) {
+				$this->db->rollBack();
+				return false;
+			}
+
 			$insert = $this->db->prepare("
 				INSERT INTO `{$jobs}` (queue, payload, attempts, available_at, created_at)
 				VALUES (:queue, :payload, 0, :available_at, :created_at)
@@ -282,7 +287,9 @@ final class QueueManager
 			$this->db->commit();
 			return true;
 		} catch (Throwable $e) {
-			$this->db->rollBack();
+			if ($this->db->inTransaction()) {
+				$this->db->rollBack();
+			}
 			throw $e;
 		}
 	}
@@ -294,21 +301,23 @@ final class QueueManager
 	 */
 	public function retryAllFailed(): int
 	{
+		$this->ensureTables();
+
 		$failed = $this->failedTable;
 		$jobs = $this->jobsTable;
-
-		$stmt = $this->db->query("SELECT * FROM `{$failed}` ORDER BY id ASC");
-		$rows = $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
-
-		if ($rows === []) {
-			return 0;
-		}
-
 		$now = time();
 		$count = 0;
 
 		$this->db->beginTransaction();
 		try {
+			$stmt = $this->db->query("SELECT * FROM `{$failed}` ORDER BY id ASC FOR UPDATE");
+			$rows = $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+			if ($rows === []) {
+				$this->db->rollBack();
+				return 0;
+			}
+
 			$insert = $this->db->prepare("
 				INSERT INTO `{$jobs}` (queue, payload, attempts, available_at, created_at)
 				VALUES (:queue, :payload, 0, :available_at, :created_at)
@@ -329,8 +338,24 @@ final class QueueManager
 			$this->db->commit();
 			return $count;
 		} catch (Throwable $e) {
-			$this->db->rollBack();
+			if ($this->db->inTransaction()) {
+				$this->db->rollBack();
+			}
 			throw $e;
+		}
+	}
+
+	/**
+	 * Count all records in the failed_jobs table without mutating database schema.
+	 */
+	public function countFailedJobs(): int
+	{
+		$failed = $this->failedTable;
+		try {
+			$stmt = $this->db->query("SELECT COUNT(*) FROM `{$failed}`");
+			return $stmt !== false ? (int) $stmt->fetchColumn() : 0;
+		} catch (Throwable) {
+			return 0;
 		}
 	}
 

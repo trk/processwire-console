@@ -102,7 +102,9 @@ final class Migrator
 	 */
 	public function getPendingRollback(int $steps = 0): array
 	{
-		$this->ensureTable();
+		if (!$this->tableExists()) {
+			return [];
+		}
 
 		if ($steps > 0) {
 			$toRollback = $this->getLastMigrations($steps);
@@ -216,16 +218,24 @@ final class Migrator
 	}
 
 	/**
+	 * Return applied migration names in exact reverse execution order (matching reset()).
+	 *
+	 * @return list<string>
+	 */
+	public function getResetOrder(): array
+	{
+		return array_values(array_reverse($this->getAppliedNames()));
+	}
+
+	/**
 	 * Get the full status of all migrations.
 	 *
 	 * @return array<int, array{name: string, status: string, batch: int|null}>
 	 */
 	public function getStatus(): array
 	{
-		$this->ensureTable();
-
 		$all = $this->discoverFiles();
-		$applied = $this->getApplied();
+		$applied = $this->tableExists() ? $this->getApplied() : [];
 		$appliedMap = [];
 		foreach ($applied as $row) {
 			$appliedMap[$row['migration']] = (int) $row['batch'];
@@ -298,7 +308,9 @@ final class Migrator
 	 */
 	private function getApplied(): array
 	{
-		$this->ensureTable();
+		if (!$this->tableExists()) {
+			return [];
+		}
 		$table = $this->table;
 		$stmt = $this->db->query("SELECT `migration`, `batch` FROM `{$table}` ORDER BY `id` ASC");
 		return $stmt !== false ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
@@ -314,7 +326,9 @@ final class Migrator
 
 	private function getLastBatchNumber(): int
 	{
-		$this->ensureTable();
+		if (!$this->tableExists()) {
+			return 0;
+		}
 		$table = $this->table;
 		$stmt = $this->db->query("SELECT MAX(`batch`) AS `max_batch` FROM `{$table}`");
 		$row = $stmt !== false ? $stmt->fetch(PDO::FETCH_ASSOC) : false;
@@ -332,7 +346,9 @@ final class Migrator
 	 */
 	private function getMigrationsForBatch(int $batch): array
 	{
-		$this->ensureTable();
+		if (!$this->tableExists()) {
+			return [];
+		}
 		$table = $this->table;
 		$stmt = $this->db->prepare("SELECT `migration`, `batch` FROM `{$table}` WHERE `batch` = :batch ORDER BY `id` DESC");
 		$stmt->bindValue(':batch', $batch, PDO::PARAM_INT);
@@ -346,7 +362,9 @@ final class Migrator
 	 */
 	private function getLastMigrations(int $steps): array
 	{
-		$this->ensureTable();
+		if (!$this->tableExists()) {
+			return [];
+		}
 		$table = $this->table;
 		$stmt = $this->db->prepare("SELECT `migration`, `batch` FROM `{$table}` ORDER BY `id` DESC LIMIT :steps");
 		$stmt->bindValue(':steps', $steps, PDO::PARAM_INT);

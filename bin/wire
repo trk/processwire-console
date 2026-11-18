@@ -111,15 +111,29 @@ if (isset($GLOBALS['_composer_autoload_path']) && file_exists($GLOBALS['_compose
 	}
 }
 
-if (!$autoloader || !file_exists($autoloader)) {
-	echo "Error: Could not locate composer autoloader.\n";
+$emitEarlyBootstrapError = static function (string $message): never {
+	$wantsJson = in_array('--json', $_SERVER['argv'] ?? [], true);
+	if ($wantsJson) {
+		fwrite(STDOUT, (string) json_encode([
+			'ok' => false,
+			'error' => [
+				'code' => 'BOOTSTRAP_FAILED',
+				'message' => $message,
+			],
+		], JSON_UNESCAPED_SLASHES) . PHP_EOL);
+	} else {
+		fwrite(STDERR, "Error: {$message}\n");
+	}
 	exit(1);
+};
+
+if (!$autoloader || !file_exists($autoloader)) {
+	$emitEarlyBootstrapError('Could not locate composer autoloader.');
 }
 
 $resolvedAutoloader = realpath($autoloader);
 if ($resolvedAutoloader === false) {
-	echo "Error: Could not resolve composer autoloader path.\n";
-	exit(1);
+	$emitEarlyBootstrapError('Could not resolve composer autoloader path.');
 }
 $autoloader = $resolvedAutoloader;
 
@@ -164,8 +178,7 @@ while ($tempRoot !== '/' && !empty($tempRoot)) {
 }
 
 if (!$pwRoot) {
-	echo "Error: Could not locate ProcessWire core (wire/core/ProcessWire.php) in any parent directory of {$autoloader}.\n";
-	exit(1);
+	$emitEarlyBootstrapError("Could not locate ProcessWire core (wire/core/ProcessWire.php) in any parent directory of {$autoloader}.");
 }
 
 // Additional PSR-4 autoloading for site/ subdirectories (seeders, schedule, queue).
@@ -360,6 +373,9 @@ $application->addCommands([
 	new QueueClearCommand(),
 ]);
 
+$wantsJson = in_array('--json', $_SERVER['argv'] ?? [], true)
+	&& (($_SERVER['argv'][1] ?? '') !== 'boost:mcp');
+
 /**
  * Dynamic Command Loading from Site Profile and Modules
  * Scans site/commands/ and site/modules/[module]/commands/ directories via FeatureDiscoverer.
@@ -370,17 +386,27 @@ if ($wire instanceof \ProcessWire\ProcessWire) {
 		$commandClasses = $discoverer->discoverClasses('commands', '*Command.php', Command::class);
 
 		foreach ($commandClasses as $className) {
-			$cmd = new $className();
-			if ($cmd instanceof Command) {
-				$application->addCommands([$cmd]);
+			try {
+				$cmd = new $className();
+				if ($cmd instanceof Command) {
+					$application->addCommands([$cmd]);
+				}
+			} catch (\Throwable $cmdError) {
+				$argv = $_SERVER['argv'] ?? [];
+				$verbose = in_array('-v', $argv, true) || in_array('-vv', $argv, true) || in_array('-vvv', $argv, true) || in_array('--verbose', $argv, true);
+				if ($verbose && !$wantsJson) {
+					fwrite(STDERR, "Warning: Failed to register command {$className}: " . $cmdError->getMessage() . "\n");
+				}
 			}
 		}
 	} catch (\Throwable $e) {
 		$argv = $_SERVER['argv'] ?? [];
 		$verbose = in_array('-v', $argv, true) || in_array('-vv', $argv, true) || in_array('-vvv', $argv, true) || in_array('--verbose', $argv, true);
-		fwrite(STDERR, "Error during dynamic command discovery: " . $e->getMessage() . "\n");
-		if ($verbose) {
-			fwrite(STDERR, "Stack trace:\n" . $e->getTraceAsString() . "\n");
+		if (!$wantsJson) {
+			fwrite(STDERR, "Error during dynamic command discovery: " . $e->getMessage() . "\n");
+			if ($verbose) {
+				fwrite(STDERR, "Stack trace:\n" . $e->getTraceAsString() . "\n");
+			}
 		}
 	}
 }
@@ -392,14 +418,58 @@ try {
 	$vendorRoot = dirname($autoloader, 2);
 	$composerCommandClasses = FeatureDiscoverer::discoverComposerCommands($vendorRoot);
 	foreach ($composerCommandClasses as $fqcn) {
-		$cmd = new $fqcn();
-		if ($cmd instanceof Command) {
-			$application->addCommands([$cmd]);
+		try {
+			$cmd = new $fqcn();
+			if ($cmd instanceof Command) {
+				$application->addCommands([$cmd]);
+			}
+		} catch (\Throwable $pkgError) {
+			if (in_array('-vvv', $_SERVER['argv'] ?? [], true) || in_array('--verbose', $_SERVER['argv'] ?? [], true)) {
+				error_log('[wire-cli] Failed to instantiate command ' . $fqcn . ': ' . $pkgError->getMessage());
+			}
 		}
 	}
 } catch (\Throwable $e) {
 	if (in_array('-vvv', $_SERVER['argv'] ?? [], true) || in_array('--verbose', $_SERVER['argv'] ?? [], true)) {
 		error_log('[wire-cli] External package command discovery failed: ' . $e->getMessage());
+	}
+}
+
+if ($wantsJson) {
+	$application->setAutoExit(false);
+	$application->setCatchExceptions(false);
+	try {
+		$exitCode = $application->run();
+		exit($exitCode);
+	} catch (\Symfony\Component\Console\Exception\ExceptionInterface $e) {
+		fwrite(STDOUT, (string) json_encode([
+			'ok' => false,
+			'error' => [
+				'code' => 'INVALID_ARGUMENTS',
+				'message' => $e->getMessage(),
+			],
+		], JSON_UNESCAPED_SLASHES) . PHP_EOL);
+		exit(1);
+	} catch (\Throwable $e) {
+		if (!($wire instanceof \ProcessWire\ProcessWire) && $e instanceof \Error) {
+			$reason = $wireBootstrapError ?? 'ProcessWire is not fully bootstrapped (database/config may be missing).';
+			fwrite(STDOUT, (string) json_encode([
+				'ok' => false,
+				'error' => [
+					'code' => 'BOOTSTRAP_FAILED',
+					'message' => $reason,
+				],
+			], JSON_UNESCAPED_SLASHES) . PHP_EOL);
+			exit(1);
+		}
+		fwrite(STDOUT, (string) json_encode([
+			'ok' => false,
+			'error' => [
+				'code' => 'EXECUTION_FAILED',
+				'message' => $e->getMessage(),
+			],
+		], JSON_UNESCAPED_SLASHES) . PHP_EOL);
+		exit(1);
 	}
 }
 

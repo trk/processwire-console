@@ -203,7 +203,10 @@ final class FeatureDiscoverer
 			if (class_exists($candidate)) {
 				if ($expectedSubclass === null || is_subclass_of($candidate, $expectedSubclass)) {
 					$ref = new \ReflectionClass($candidate);
-					if ($ref->isAbstract() || $ref->isInterface() || $ref->isTrait()) {
+					if (!$ref->isInstantiable()) {
+						continue;
+					}
+					if ($expectedSubclass === Command::class && ($ref->getConstructor()?->getNumberOfRequiredParameters() ?? 0) > 0) {
 						continue;
 					}
 					/** @var class-string<T> $candidate */
@@ -330,7 +333,7 @@ final class FeatureDiscoverer
 			}
 			if (class_exists($fqcn) && is_subclass_of($fqcn, Command::class)) {
 				$ref = new \ReflectionClass($fqcn);
-				if (!$ref->isAbstract()) {
+				if ($ref->isInstantiable() && ($ref->getConstructor()?->getNumberOfRequiredParameters() ?? 0) === 0) {
 					$discovered[] = $fqcn;
 				}
 			}
@@ -344,14 +347,22 @@ final class FeatureDiscoverer
 	 */
 	public static function resolveStorageTableOptions(?object $config = null): array
 	{
-		$cfg = $config ?? (function_exists('\ProcessWire\wire') ? \ProcessWire\wire('config') : null);
-		$engine = is_object($cfg) && !empty($cfg->dbEngine) ? (string) $cfg->dbEngine : 'InnoDB';
+		$cfg = $config ?? (
+			class_exists('\\ProcessWire\\ProcessWire', false)
+			&& \ProcessWire\ProcessWire::getCurrentInstance() !== null
+			&& function_exists('\ProcessWire\wire')
+				? \ProcessWire\wire('config')
+				: null
+		);
+		$rawEngine = is_object($cfg) && !empty($cfg->dbEngine) ? strtolower(trim((string) $cfg->dbEngine)) : 'innodb';
 		$charset = is_object($cfg) && !empty($cfg->dbCharset) ? (string) $cfg->dbCharset : 'utf8mb4';
 
-		$allowedEngines = ['InnoDB', 'MyISAM', 'Aria', 'MEMORY', 'ARCHIVE'];
-		if (!in_array($engine, $allowedEngines, true)) {
-			$engine = 'InnoDB';
-		}
+		$engineMap = [
+			'innodb' => 'InnoDB',
+			'myisam' => 'MyISAM',
+			'aria' => 'Aria',
+		];
+		$engine = $engineMap[$rawEngine] ?? 'InnoDB';
 
 		if (!preg_match('/^[a-zA-Z0-9_]+$/', $charset)) {
 			$charset = 'utf8mb4';

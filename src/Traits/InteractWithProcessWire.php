@@ -261,7 +261,7 @@ trait InteractWithProcessWire
 		}
 
 		if ($replacements !== []) {
-			$content = str_replace(array_keys($replacements), array_values($replacements), $content);
+			$content = strtr($content, $replacements);
 		}
 
 		return $content;
@@ -366,11 +366,92 @@ trait InteractWithProcessWire
 	}
 
 	/**
+	 * Determine whether a ProcessWire Page is an RBAC entity (User, Role, or Permission).
+	 */
+	protected function isRbacPage(\ProcessWire\Page $page): bool
+	{
+		if (
+			$page instanceof \ProcessWire\User
+			|| $page instanceof \ProcessWire\Role
+			|| $page instanceof \ProcessWire\Permission
+		) {
+			return true;
+		}
+
+		$tplName = $page->template instanceof \ProcessWire\Template ? (string) $page->template->name : '';
+		return in_array($tplName, ['user', 'role', 'permission'], true);
+	}
+
+	/**
+	 * Determine whether a ProcessWire Page is one of the RBAC container pages (users, roles, permissions).
+	 */
+	protected function isRbacContainerPage(\ProcessWire\Page $page): bool
+	{
+		$config = wire('config');
+		$containerIds = [
+			(int) ($config->usersPageID ?? 29),
+			(int) ($config->rolesPageID ?? 30),
+			(int) ($config->permissionsPageID ?? 31),
+		];
+
+		return in_array((int) $page->id, $containerIds, true);
+	}
+
+	/**
 	 * Check whether a ProcessWire selector string already defines a positive top-level `limit=N` clause.
 	 */
 	protected function selectorHasTopLevelLimit(string $selector): bool
 	{
-		$depth = 0;
+		foreach ($this->splitTopLevelSelectorClauses($selector) as $clause) {
+			if (preg_match('/^\s*limit\s*=\s*0*([1-9][0-9]*)\s*$/i', $clause) === 1) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Ensure a ProcessWire selector has a positive top-level `limit=N` clause and clamp any explicit top-level limit to $maxLimit.
+	 */
+	protected function clampSelectorTopLevelLimit(string $selector, int $defaultLimit = 50, int $maxLimit = 500): string
+	{
+		$clauses = $this->splitTopLevelSelectorClauses($selector);
+		$foundPositiveLimit = false;
+		$rebuilt = [];
+
+		foreach ($clauses as $clause) {
+			if (preg_match('/^(\s*)(?:!+\s*|[A-Za-z0-9_.-]*@\s*)*limit(?![A-Za-z0-9_.])\s*(.*)$/i', $clause) === 1) {
+				if (preg_match('/^(\s*)limit\s*=\s*0*([1-9][0-9]*)\s*$/i', $clause, $m) === 1) {
+					$num = (int) $m[2];
+					if ($num > 0) {
+						$foundPositiveLimit = true;
+						$rebuilt[] = $m[1] . 'limit=' . min($maxLimit, $num);
+					}
+				}
+				continue;
+			}
+			$rebuilt[] = $clause;
+		}
+
+		if (!$foundPositiveLimit) {
+			$rebuilt[] = ' limit=' . max(1, min($maxLimit, $defaultLimit));
+		}
+
+		return ltrim(implode(',', $rebuilt));
+	}
+
+	/**
+	 * Split a ProcessWire selector string into top-level comma-delimited clauses while respecting quotes, `[]`, `()`, and `{}`.
+	 *
+	 * @return list<string>
+	 */
+	private function splitTopLevelSelectorClauses(string $selector): array
+	{
+		$clauses = [];
+		$bracketDepth = 0;
+		$parenDepth = 0;
+		$braceDepth = 0;
 		$quote = '';
 		$current = '';
 		$length = strlen($selector);
@@ -378,8 +459,9 @@ trait InteractWithProcessWire
 		for ($i = 0; $i < $length; $i++) {
 			$ch = $selector[$i];
 			if ($quote !== '') {
+				$current .= $ch;
 				if ($ch === '\\' && $i + 1 < $length) {
-					$i++;
+					$current .= $selector[++$i];
 					continue;
 				}
 				if ($ch === $quote) {
@@ -387,33 +469,53 @@ trait InteractWithProcessWire
 				}
 				continue;
 			}
-
 			if ($ch === '"' || $ch === "'") {
 				$quote = $ch;
+				$current .= $ch;
+				continue;
+			}
+			if ($ch === '{') {
+				$braceDepth++;
+				$current .= $ch;
+				continue;
+			}
+			if ($ch === '}') {
+				$braceDepth = max(0, $braceDepth - 1);
+				$current .= $ch;
 				continue;
 			}
 			if ($ch === '[') {
-				$depth++;
+				$bracketDepth++;
+				$current .= $ch;
 				continue;
 			}
 			if ($ch === ']') {
-				$depth = max(0, $depth - 1);
+				$bracketDepth = max(0, $bracketDepth - 1);
+				$current .= $ch;
 				continue;
 			}
-
-			if ($depth === 0) {
-				if ($ch === ',') {
-					if (preg_match('/^\s*limit\s*=\s*([1-9][0-9]*)\s*$/i', $current) === 1) {
-						return true;
-					}
-					$current = '';
-					continue;
-				}
+			if ($ch === '(') {
+				$parenDepth++;
 				$current .= $ch;
+				continue;
 			}
+			if ($ch === ')') {
+				$parenDepth = max(0, $parenDepth - 1);
+				$current .= $ch;
+				continue;
+			}
+			if ($ch === ',' && $bracketDepth === 0 && $parenDepth === 0 && $braceDepth === 0) {
+				$clauses[] = $current;
+				$current = '';
+				continue;
+			}
+			$current .= $ch;
+		}
+		if (trim($current) !== '') {
+			$clauses[] = $current;
 		}
 
-		return preg_match('/^\s*limit\s*=\s*([1-9][0-9]*)\s*$/i', $current) === 1;
+		return $clauses;
 	}
 
 	/**
@@ -478,10 +580,10 @@ trait InteractWithProcessWire
 			return '';
 		}
 		$base = (string) preg_replace('/\.txt$/i', '', $trimmed);
-		if ($base === '' || $base === '.' || $base === '..') {
+		if ($base === '' || $base === '.' || $base === '..' || str_starts_with($base, '.') || str_ends_with($base, '.')) {
 			return '';
 		}
-		if (preg_match('/^[A-Za-z0-9_-]+$/', $base) !== 1) {
+		if (preg_match('/^[A-Za-z0-9._-]+$/', $base) !== 1) {
 			return '';
 		}
 		return $base;
@@ -531,6 +633,15 @@ trait InteractWithProcessWire
 			$name .= $suffix;
 		}
 
+		if (strcasecmp($name, $suffix) === 0) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'INVALID_NAME',
+				"Class name '{$name}' collides with the base {$suffix} class. Provide a descriptive prefix (e.g., Sync{$suffix})."
+			);
+		}
+
 		$rawModule = $input->getOption('module');
 		$module = ($rawModule !== null && $rawModule !== '') ? (string) $rawModule : null;
 		if ($module !== null && !$this->isValidIdentifier($module)) {
@@ -551,12 +662,16 @@ trait InteractWithProcessWire
 			$namespace = $defaultNamespace;
 		}
 
+		if (is_link(rtrim($targetDir, '/'))) {
+			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Refusing to write into symbolic link directory: {$targetDir}");
+		}
+
 		if (!is_dir($targetDir) && !mkdir($targetDir, 0755, true) && !is_dir($targetDir)) {
 			return $this->failCommand($output, $asJson, 'WRITE_FAILED', "Failed to create directory: {$targetDir}");
 		}
 
 		$filePath = $targetDir . $name . '.php';
-		if (file_exists($filePath)) {
+		if (file_exists($filePath) || is_link($filePath)) {
 			$ucLabel = ucfirst($label);
 			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "{$ucLabel} file already exists: {$name}.php");
 		}
