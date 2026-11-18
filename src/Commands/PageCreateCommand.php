@@ -38,8 +38,10 @@ final class PageCreateCommand extends Command
 	{
 		$parentArg = trim((string) $input->getOption('parent'));
 		$templateName = trim((string) $input->getOption('template'));
-		$name = $input->getOption('name') ? (string) $input->getOption('name') : null;
-		$title = $input->getOption('title') ? (string) $input->getOption('title') : null;
+		$rawNameOpt = $input->getOption('name');
+		$rawTitleOpt = $input->getOption('title');
+		$name = ($rawNameOpt !== null && $rawNameOpt !== '') ? (string) $rawNameOpt : null;
+		$title = ($rawTitleOpt !== null && $rawTitleOpt !== '') ? (string) $rawTitleOpt : null;
 		$unpublished = (bool) $input->getOption('unpublished');
 		$wantInteractive = (bool) $input->getOption('interactive');
 		$dryRun = (bool) $input->getOption('dry-run');
@@ -89,15 +91,59 @@ final class PageCreateCommand extends Command
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Parent not found: {$parentArg}");
 		}
 
+		if ($parent->isTrash()) {
+			return $this->failCommand($output, $asJson, 'INVALID_PARENT', 'Cannot create a new page directly inside the Trash.');
+		}
+
+		if ($this->isRbacContainerPage($parent)) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'RBAC_CONTAINER_PROTECTED',
+				'Use user:create, role:create, or permission:create instead of creating pages under RBAC containers.'
+			);
+		}
+
 		$template = $templates->get($templateName);
 		if (!$template || !$template->id) {
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateName}");
 		}
 
-		if (!$name && $title) {
+		if ((((int) $template->flags) & \ProcessWire\Template::flagSystem) !== 0) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$templateName}' is a system template and cannot be instantiated via page:create.");
+		}
+
+		if ((int) $template->noParents === 1) {
+			return $this->failCommand($output, $asJson, 'FAMILY_CONSTRAINT', "Template '{$templateName}' does not allow creating new pages (noParents=1).");
+		}
+		if ((int) $template->noParents === -1) {
+			$safeTplSel = $sanitizer->selectorValue((string) $template->name);
+			if ($pages->count("template={$safeTplSel}, include=all") > 0) {
+				return $this->failCommand($output, $asJson, 'FAMILY_CONSTRAINT', "Template '{$templateName}' allows only a single page instance (noParents=-1), and one already exists.");
+			}
+		}
+		if ($parent->template instanceof \ProcessWire\Template) {
+			$parentTpl = $parent->template;
+			if ((int) $parentTpl->noChildren === 1) {
+				return $this->failCommand($output, $asJson, 'FAMILY_CONSTRAINT', "Parent page '{$parent->path}' (template '{$parentTpl->name}') does not allow children (noChildren=1).");
+			}
+			$allowedChildTemplates = is_array($parentTpl->childTemplates) ? array_map('intval', $parentTpl->childTemplates) : [];
+			if ($allowedChildTemplates !== [] && !in_array((int) $template->id, $allowedChildTemplates, true)) {
+				return $this->failCommand($output, $asJson, 'FAMILY_CONSTRAINT', "Parent template '{$parentTpl->name}' does not allow child pages with template '{$templateName}'.");
+			}
+			$allowedParentTemplates = is_array($template->parentTemplates) ? array_map('intval', $template->parentTemplates) : [];
+			if ($allowedParentTemplates !== [] && !in_array((int) $parentTpl->id, $allowedParentTemplates, true)) {
+				return $this->failCommand($output, $asJson, 'FAMILY_CONSTRAINT', "Template '{$templateName}' cannot be placed under parent template '{$parentTpl->name}'.");
+			}
+		}
+		if ($unpublished && !empty($template->noUnpublish)) {
+			return $this->failCommand($output, $asJson, 'UNPUBLISH_FORBIDDEN', "Template '{$templateName}' forbids unpublished pages (noUnpublish=1).");
+		}
+
+		if (($name === null || $name === '') && $title !== null && $title !== '') {
 			$name = $sanitizer->pageName($title, true);
 		}
-		if (!$name) {
+		if ($name === null || $name === '') {
 			$name = 'page-' . date('Ymd-His');
 		}
 		$name = (string) $sanitizer->pageName($name, true);
@@ -132,7 +178,7 @@ final class PageCreateCommand extends Command
 		if ($unpublished) {
 			$page->addStatus(\ProcessWire\Page::statusUnpublished);
 		}
-		if (($wantInteractive || (!$input->getOption('title') && !$input->getOption('name'))) && $this->canPrompt($input, $asJson)) {
+		if (($wantInteractive || ($rawTitleOpt === null && $rawNameOpt === null)) && $this->canPrompt($input, $asJson)) {
 			$fill = confirm('Fill template fields now?', default: false);
 			if ($fill) {
 				foreach ($template->fieldgroup as $f) {
@@ -165,14 +211,17 @@ final class PageCreateCommand extends Command
 			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
 		}
 
+		$actualStatus = $page->isUnpublished() ? 'unpublished' : 'published';
 		$result['id'] = $page->id;
+		$result['name'] = (string) $page->name;
 		$result['url'] = $page->url;
+		$result['status'] = $actualStatus;
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result);
 		}
 
-		info("Created page #{$page->id} at {$page->url} (" . ($unpublished ? 'unpublished' : 'published') . ').');
+		info("Created page #{$page->id} at {$page->url} ({$actualStatus}).");
 		return Command::SUCCESS;
 	}
 }

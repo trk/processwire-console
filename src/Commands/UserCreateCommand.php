@@ -108,7 +108,25 @@ final class UserCreateCommand extends Command
 		$email = $emailSan;
 		$password = is_string($passOpt) && $passOpt !== '' ? $passOpt : bin2hex(random_bytes(8));
 
-		$normalizedRoles = array_values(array_map(static fn(mixed $r): string => strtolower(trim((string) $r)), $roles));
+		$existing = $this->findNamedSystemPage('users', $cleanUsername);
+		if ($existing !== null) {
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "User '{$cleanUsername}' already exists.");
+		}
+
+		$resolvedRoles = [];
+		foreach ($roles as $roleName) {
+			$roleNameStr = trim((string) $roleName);
+			if ($roleNameStr === '') {
+				continue;
+			}
+			$role = $this->findNamedSystemPage('roles', $roleNameStr);
+			if (!($role instanceof \ProcessWire\Role) || !$role->id) {
+				return $this->failCommand($output, $asJson, 'ROLE_NOT_FOUND', "Role not found: '{$roleNameStr}'.");
+			}
+			$resolvedRoles[] = $role;
+		}
+
+		$normalizedRoles = array_values(array_map(static fn(\ProcessWire\Role $r): string => strtolower((string) $r->name), $resolvedRoles));
 		if (in_array('superuser', $normalizedRoles, true) && !$force) {
 			if ($asJson || !$input->isInteractive()) {
 				return $this->failCommand($output, $asJson, 'CONFIRMATION_REQUIRED', 'Assigning the superuser role non-interactively requires --force.');
@@ -119,29 +137,22 @@ final class UserCreateCommand extends Command
 			}
 		}
 
-		$existing = $this->findNamedSystemPage('users', $cleanUsername);
-		if ($existing !== null) {
-			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "User '{$cleanUsername}' already exists.");
-		}
+		try {
+			$u = \ProcessWire\wire('users')->add($cleanUsername);
+			$u->of(false);
+			$u->email = $email;
+			$u->pass = $password;
 
-		$u = \ProcessWire\wire('users')->add($cleanUsername);
-		$u->of(false);
-		$u->email = $email;
-		$u->pass = $password;
-
-		$assignedRoles = [];
-		foreach ($roles as $roleName) {
-			$roleNameStr = trim((string) $roleName);
-			$role = $this->findNamedSystemPage('roles', $roleNameStr);
-			if ($role instanceof \ProcessWire\Role && $role->id) {
+			$assignedRoles = [];
+			foreach ($resolvedRoles as $role) {
 				$u->addRole($role);
 				$assignedRoles[] = (string) $role->name;
-			} elseif (!$asJson) {
-				warning("Role '{$roleNameStr}' not found, skipping.");
 			}
-		}
 
-		$u->save();
+			$u->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, [

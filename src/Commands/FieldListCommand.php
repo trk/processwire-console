@@ -38,10 +38,10 @@ final class FieldListCommand extends Command
 
 		foreach ($fields as $field) {
 			$typeName = $field->type ? $field->type->className() : 'Unknown';
-			if ($type && stripos($typeName, (string) $type) === false) {
+			if ($type !== null && $type !== '' && stripos($typeName, (string) $type) === false) {
 				continue;
 			}
-			if ($search && (stripos((string) $field->name, (string) $search) === false && stripos((string) $field->label, (string) $search) === false)) {
+			if ($search !== null && $search !== '' && (stripos((string) $field->name, (string) $search) === false && stripos((string) $field->label, (string) $search) === false)) {
 				continue;
 			}
 

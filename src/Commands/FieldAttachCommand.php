@@ -87,11 +87,39 @@ final class FieldAttachCommand extends Command
 		if (!$template || !$template->id) {
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateName}");
 		}
+		if ((((int) $template->flags) & \ProcessWire\Template::flagSystem) !== 0) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$templateName}' is a system template and cannot be modified via CLI.");
+		}
+
+		$positionStr = (string) $position;
+		if (
+			!in_array($positionStr, ['first', 'last'], true)
+			&& preg_match('/^(after|before)=[A-Za-z_][A-Za-z0-9_]*$/', $positionStr) !== 1
+		) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'INVALID_POSITION',
+				"Invalid --position '{$positionStr}'. Expected first, last, after=FIELD, or before=FIELD."
+			);
+		}
 
 		$fg = $template->fieldgroup;
 		$exists = (bool) $fg->getField((string) $fieldName);
 
-		$result = ['field' => $fieldName, 'template' => $templateName, 'position' => $position, 'alreadyAttached' => $exists, 'dryRun' => $dryRun];
+		if (str_starts_with($positionStr, 'after=')) {
+			$anchorName = substr($positionStr, 6);
+			if (!$fg->getField($anchorName)) {
+				return $this->failCommand($output, $asJson, 'ANCHOR_NOT_FOUND', "Anchor field '{$anchorName}' is not attached to template '{$templateName}'.");
+			}
+		} elseif (str_starts_with($positionStr, 'before=')) {
+			$anchorName = substr($positionStr, 7);
+			if (!$fg->getField($anchorName)) {
+				return $this->failCommand($output, $asJson, 'ANCHOR_NOT_FOUND', "Anchor field '{$anchorName}' is not attached to template '{$templateName}'.");
+			}
+		}
+
+		$result = ['field' => $fieldName, 'template' => $templateName, 'position' => $positionStr, 'alreadyAttached' => $exists, 'dryRun' => $dryRun];
 		if ($dryRun) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $result);
@@ -100,30 +128,34 @@ final class FieldAttachCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		if (!$exists) {
-			$fg->add($field);
-		}
+		try {
+			if (!$exists) {
+				$fg->add($field);
+			}
 
-		if (str_starts_with((string) $position, 'after=')) {
-			$afterName = substr((string) $position, 6);
-			$afterField = $fg->getField($afterName);
-			if ($afterField) {
-				$fg->insertAfter($field, $afterField);
+			if (str_starts_with((string) $position, 'after=')) {
+				$afterName = substr((string) $position, 6);
+				$afterField = $fg->getField($afterName);
+				if ($afterField) {
+					$fg->insertAfter($field, $afterField);
+				}
+			} elseif (str_starts_with((string) $position, 'before=')) {
+				$beforeName = substr((string) $position, 7);
+				$beforeField = $fg->getField($beforeName);
+				if ($beforeField) {
+					$fg->insertBefore($field, $beforeField);
+				}
+			} elseif ($position === 'first') {
+				$first = $fg->first();
+				if ($first && $first !== $field) {
+					$fg->insertBefore($field, $first);
+				}
 			}
-		} elseif (str_starts_with((string) $position, 'before=')) {
-			$beforeName = substr((string) $position, 7);
-			$beforeField = $fg->getField($beforeName);
-			if ($beforeField) {
-				$fg->insertBefore($field, $beforeField);
-			}
-		} elseif ($position === 'first') {
-			$first = $fg->first();
-			if ($first && $first !== $field) {
-				$fg->insertBefore($field, $first);
-			}
-		}
 
-		$fg->save();
+			$fg->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['attached' => true]);

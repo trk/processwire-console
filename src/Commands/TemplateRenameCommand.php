@@ -55,11 +55,12 @@ final class TemplateRenameCommand extends Command
 			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --name and --new-name.');
 		}
 
-		if (!preg_match('/^[a-zA-Z0-9_-]+$/', (string) $old) || !preg_match('/^[a-zA-Z0-9_-]+$/', (string) $new)) {
+		if (!preg_match('/^[a-zA-Z0-9_-]+$/', (string) $old) || !preg_match('/^[a-zA-Z0-9_-]+$/', (string) $new) || ctype_digit((string) $new)) {
 			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid template name format: '{$new}'.");
 		}
 
 		$templates = \ProcessWire\wire('templates');
+		$fieldgroups = \ProcessWire\wire('fieldgroups');
 		$t = $templates->get((string) $old);
 		if (!$t || !$t->id) {
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$old}");
@@ -73,6 +74,11 @@ final class TemplateRenameCommand extends Command
 			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "A template named '{$new}' already exists.");
 		}
 
+		$existingFg = $fieldgroups ? $fieldgroups->get((string) $new) : null;
+		if ($existingFg && $existingFg->id && (!$t->fieldgroup || (int) $existingFg->id !== (int) $t->fieldgroup->id)) {
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "A fieldgroup named '{$new}' already exists.");
+		}
+
 		$result = ['old' => $old, 'new' => $new, 'dryRun' => $dryRun];
 		if ($dryRun) {
 			if ($asJson) {
@@ -82,8 +88,30 @@ final class TemplateRenameCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		$t->name = (string) $new;
-		$templates->save($t);
+		try {
+			$fg = $t->fieldgroup;
+			if ($fg && $fg->id && (string) $fg->name === (string) $old) {
+				$fgShared = false;
+				foreach ($templates as $otherTpl) {
+					if ((int) $otherTpl->id === (int) $t->id) {
+						continue;
+					}
+					if ($otherTpl->fieldgroup && (int) $otherTpl->fieldgroup->id === (int) $fg->id) {
+						$fgShared = true;
+						break;
+					}
+				}
+				if (!$fgShared && $fieldgroups) {
+					$fg->name = (string) $new;
+					$fieldgroups->save($fg);
+				}
+			}
+
+			$t->name = (string) $new;
+			$templates->save($t);
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['renamed' => true]);

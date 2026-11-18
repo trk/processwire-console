@@ -35,16 +35,20 @@ final class FieldDeleteCommand extends Command
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 		$dryRun = (bool) $input->getOption('dry-run');
-		$name = $input->getOption('name') ?: $input->getArgument('name');
+		$rawOptName = $input->getOption('name');
+		$rawArgName = $input->getArgument('name');
+		$name = ($rawOptName !== null && $rawOptName !== '')
+			? (string) $rawOptName
+			: (($rawArgName !== null && $rawArgName !== '') ? (string) $rawArgName : '');
 
-		if (!$name && $this->canPrompt($input, $asJson, $force)) {
+		if ($name === '' && $this->canPrompt($input, $asJson, $force)) {
 			$name = $this->searchField('Search for a field to delete');
 			if ($name === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$name) {
+		if ($name === '') {
 			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide field name via argument or --name.');
 		}
 

@@ -81,9 +81,13 @@ final class RoleRevokeCommand extends Command
 		}
 
 		if ($has) {
-			$role->of(false);
-			$role->removePermission($permission);
-			$role->save();
+			try {
+				$role->of(false);
+				$role->removePermission($permission);
+				$role->save();
+			} catch (\Throwable $e) {
+				return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+			}
 		}
 
 		if ($asJson) {

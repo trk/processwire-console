@@ -60,13 +60,32 @@ final class TemplateUpdateCommand extends Command
 			);
 			$changes = $this->parseKeyValueSets($prompted);
 		}
-		unset($changes['id'], $changes['name'], $changes['flags'], $changes['fieldgroup'], $changes['fieldgroup_id']);
+		unset(
+			$changes['id'],
+			$changes['name'],
+			$changes['flags'],
+			$changes['fieldgroup'],
+			$changes['fieldgroup_id'],
+			$changes['fieldgroups_id'],
+			$changes['fields'],
+			$changes['filename'],
+			$changes['altFilename'],
+			$changes['roles'],
+			$changes['editRoles'],
+			$changes['addRoles'],
+			$changes['createRoles'],
+			$changes['rolesPermissions']
+		);
 
 		$dryRun = (bool) $input->getOption('dry-run');
 
 		$template = \ProcessWire\wire('templates')->get((string) $name);
 		if (!$template || !$template->id) {
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$name}");
+		}
+
+		if ((((int) $template->flags) & \ProcessWire\Template::flagSystem) !== 0) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$name}' is a system template and cannot be modified via CLI.");
 		}
 
 		if ($changes === []) {
@@ -91,7 +110,11 @@ final class TemplateUpdateCommand extends Command
 				}
 			}
 		}
-		\ProcessWire\wire('templates')->save($template);
+		try {
+			\ProcessWire\wire('templates')->save($template);
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['saved' => true]);

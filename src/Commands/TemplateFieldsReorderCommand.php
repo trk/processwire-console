@@ -68,6 +68,9 @@ final class TemplateFieldsReorderCommand extends Command
 		if (!$template || !$template->id) {
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateName}");
 		}
+		if ((((int) $template->flags) & \ProcessWire\Template::flagSystem) !== 0) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$templateName}' is a system template and its fields cannot be reordered via CLI.");
+		}
 		$fg = $template->fieldgroup;
 		$names = array_map('trim', explode(',', $orderStr));
 
@@ -106,7 +109,11 @@ final class TemplateFieldsReorderCommand extends Command
 			}
 		}
 
-		$fg->save();
+		try {
+			$fg->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['reordered' => true]);

@@ -43,9 +43,7 @@ final class PageFindCommand extends Command
 			return $this->failCommand($output, $asJson, 'MISSING_SELECTOR', 'No selector provided.');
 		}
 
-		$effectiveSelector = $this->selectorHasTopLevelLimit($selectorStr)
-			? $selectorStr
-			: "{$selectorStr}, limit={$limit}";
+		$effectiveSelector = $this->clampSelectorTopLevelLimit($selectorStr, $limit, 500);
 
 		try {
 			$pages = \ProcessWire\wire('pages')->find($effectiveSelector);

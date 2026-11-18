@@ -50,8 +50,16 @@ final class PageUnpublishCommand extends Command
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'Page not found.');
 		}
 
+		if ($this->isRbacPage($page)) {
+			return $this->failCommand($output, $asJson, 'RBAC_PAGE_PROTECTED', 'Users, roles, and permissions cannot be unpublished via page:unpublish.');
+		}
+
 		if ($this->isProtectedSystemPage($page)) {
 			return $this->failCommand($output, $asJson, 'SYSTEM_PAGE_PROTECTED', "Page #{$page->id} ({$page->path}) is a system page and cannot be unpublished.");
+		}
+
+		if ($page->template instanceof \ProcessWire\Template && !empty($page->template->noUnpublish)) {
+			return $this->failCommand($output, $asJson, 'UNPUBLISH_FORBIDDEN', "Template '{$page->template->name}' forbids unpublishing pages (noUnpublish=1).");
 		}
 
 		$result = ['id' => $page->id, 'path' => $page->path, 'wasUnpublished' => $page->isUnpublished(), 'dryRun' => $dryRun];

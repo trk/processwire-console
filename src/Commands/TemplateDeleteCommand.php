@@ -32,23 +32,27 @@ final class TemplateDeleteCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$name = $input->getOption('name') ?: $input->getArgument('name');
+		$rawOptName = $input->getOption('name');
+		$rawArgName = $input->getArgument('name');
+		$name = ($rawOptName !== null && $rawOptName !== '')
+			? (string) $rawOptName
+			: (($rawArgName !== null && $rawArgName !== '') ? (string) $rawArgName : '');
 		$dryRun = (bool) $input->getOption('dry-run');
 		$asJson = (bool) $input->getOption('json');
 		$force = (bool) $input->getOption('force');
 
-		if (!$name && $this->canPrompt($input, $asJson, $force)) {
+		if ($name === '' && $this->canPrompt($input, $asJson, $force)) {
 			$name = $this->searchTemplate('Select the template to delete');
 			if ($name === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$name) {
+		if ($name === '') {
 			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide template name via argument or --name.');
 		}
 
-		if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $name) !== 1) {
+		if (preg_match('/^[A-Za-z0-9_-]+$/', $name) !== 1 || ctype_digit($name)) {
 			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid template name: '{$name}'.");
 		}
 
@@ -94,7 +98,10 @@ final class TemplateDeleteCommand extends Command
 				if ($fg && $fg->id) {
 					$sharedCount = 0;
 					foreach ($templates as $otherTpl) {
-						if ((int) $otherTpl->fieldgroup_id === (int) $fg->id) {
+						if (
+							($otherTpl->fieldgroup && (int) $otherTpl->fieldgroup->id === (int) $fg->id)
+							|| (int) $otherTpl->fieldgroups_id === (int) $fg->id
+						) {
 							$sharedCount++;
 						}
 					}

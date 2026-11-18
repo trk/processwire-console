@@ -55,8 +55,13 @@ final class FieldRenameCommand extends Command
 			return $this->failCommand($output, $asJson, 'MISSING_OPTIONS', 'Provide --name and --new-name.');
 		}
 
-		if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $old) !== 1 || preg_match('/^[a-z_][a-z0-9_]*$/', (string) $new) !== 1) {
-			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid field name format: '{$new}'. Must match /^[a-z_][a-z0-9_]*$/.");
+		$newStr = (string) $new;
+		if (
+			preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', (string) $old) !== 1
+			|| preg_match('/^[a-z][a-z0-9_]*$/', $newStr) !== 1
+			|| str_contains($newStr, '__')
+		) {
+			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid field name format: '{$newStr}'. Must start with a lowercase letter, contain only [a-z0-9_], and avoid double underscores.");
 		}
 
 		$fields = \ProcessWire\wire('fields');
@@ -69,22 +74,30 @@ final class FieldRenameCommand extends Command
 			return $this->failCommand($output, $asJson, 'SYSTEM_FIELD', "Field '{$old}' is a protected core/global field and cannot be renamed.");
 		}
 
-		$existingNew = $fields->get((string) $new);
-		if ($existingNew && $existingNew->id) {
-			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "A field named '{$new}' already exists.");
+		if ($fields->isNative($newStr)) {
+			return $this->failCommand($output, $asJson, 'RESERVED_NAME', "Field name '{$newStr}' is a reserved ProcessWire native property.");
 		}
 
-		$result = ['old' => $old, 'new' => $new, 'dryRun' => $dryRun];
+		$existingNew = $fields->get($newStr);
+		if ($existingNew && $existingNew->id) {
+			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "A field named '{$newStr}' already exists.");
+		}
+
+		$result = ['old' => $old, 'new' => $newStr, 'dryRun' => $dryRun];
 		if ($dryRun) {
 			if ($asJson) {
 				return $this->outputJsonSuccess($output, $result);
 			}
-			note("Dry-run: would rename field '{$old}' to '{$new}'.");
+			note("Dry-run: would rename field '{$old}' to '{$newStr}'.");
 			return Command::SUCCESS;
 		}
 
-		$f->name = (string) $new;
-		$fields->save($f);
+		try {
+			$f->name = $newStr;
+			$fields->save($f);
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['renamed' => true]);

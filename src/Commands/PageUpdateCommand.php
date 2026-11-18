@@ -93,11 +93,7 @@ final class PageUpdateCommand extends Command
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'Page not found.');
 		}
 
-		if (
-			$page instanceof \ProcessWire\User
-			|| $page instanceof \ProcessWire\Role
-			|| $page instanceof \ProcessWire\Permission
-		) {
+		if ($this->isRbacPage($page)) {
 			return $this->failCommand(
 				$output,
 				$asJson,
@@ -109,14 +105,21 @@ final class PageUpdateCommand extends Command
 		$changes = $this->parseKeyValueSets($setRaw);
 		unset(
 			$changes['id'],
+			$changes['name'],
 			$changes['status'],
+			$changes['statusPrevious'],
 			$changes['flags'],
 			$changes['pass'],
 			$changes['roles'],
 			$changes['permissions'],
 			$changes['parent'],
 			$changes['parent_id'],
+			$changes['parentID'],
+			$changes['parentPrevious'],
 			$changes['template'],
+			$changes['template_id'],
+			$changes['templateID'],
+			$changes['templatesID'],
 			$changes['templates_id']
 		);
 
@@ -149,6 +152,12 @@ final class PageUpdateCommand extends Command
 			if ($newParent === null) {
 				return $this->failCommand($output, $asJson, 'NOT_FOUND', "Parent not found: {$parentOpt}");
 			}
+			if ($newParent->isTrash()) {
+				return $this->failCommand($output, $asJson, 'TRASH_PARENT_DISALLOWED', 'Use page:trash --force instead of moving a page into the Trash.');
+			}
+			if ($this->isRbacContainerPage($newParent)) {
+				return $this->failCommand($output, $asJson, 'RBAC_CONTAINER_PROTECTED', 'Pages cannot be moved into RBAC system containers.');
+			}
 			if ((int) $newParent->id === (int) $page->id || $newParent->parents->has($page)) {
 				return $this->failCommand($output, $asJson, 'INVALID_PARENT', 'Cannot move a page into itself or one of its descendants.');
 			}
@@ -163,10 +172,15 @@ final class PageUpdateCommand extends Command
 			if (!$newTemplate || !$newTemplate->id) {
 				return $this->failCommand($output, $asJson, 'NOT_FOUND', "Template not found: {$templateOpt}");
 			}
+			if ((((int) $newTemplate->flags) & \ProcessWire\Template::flagSystem) !== 0) {
+				return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$templateOpt}' is a system template and cannot be assigned via page:update.");
+			}
 		}
 
 		if ($wantInteractive && $this->canPrompt($input, $asJson)) {
-			$statusChoices = ['none', 'publish', 'unpublish', 'hide', 'show', 'lock', 'unlock'];
+			$statusChoices = $isProtected
+				? ['none', 'publish', 'show', 'lock', 'unlock']
+				: ['none', 'publish', 'unpublish', 'hide', 'show', 'lock', 'unlock'];
 			if ($statusOp === '') {
 				$sel = (string) select('Status change', $statusChoices, default: 'none');
 				$statusOp = $sel !== 'none' ? $sel : '';
@@ -194,6 +208,13 @@ final class PageUpdateCommand extends Command
 					}
 				}
 			}
+		}
+
+		$effectiveTpl = $newTemplate instanceof \ProcessWire\Template
+			? $newTemplate
+			: ($page->template instanceof \ProcessWire\Template ? $page->template : null);
+		if (in_array($statusOp, ['unpublish', 'unpublished'], true) && $effectiveTpl !== null && !empty($effectiveTpl->noUnpublish)) {
+			return $this->failCommand($output, $asJson, 'UNPUBLISH_FORBIDDEN', "Template '{$effectiveTpl->name}' forbids unpublishing pages (noUnpublish=1).");
 		}
 
 		$result = [
@@ -227,9 +248,10 @@ final class PageUpdateCommand extends Command
 			try {
 				$page->set($k, $v);
 			} catch (\Throwable $e) {
-				if (!$asJson) {
-					warning("Field '{$k}': " . $e->getMessage());
+				if ($asJson) {
+					return $this->failCommand($output, true, 'INVALID_FIELD_VALUE', "Field '{$k}': " . $e->getMessage());
 				}
+				warning("Field '{$k}': " . $e->getMessage());
 			}
 		}
 
@@ -267,6 +289,7 @@ final class PageUpdateCommand extends Command
 			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
 		}
 
+		$result['path'] = (string) $page->path;
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['saved' => true]);
 		}

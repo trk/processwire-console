@@ -57,9 +57,8 @@ final class PageListCommand extends Command
 			$safeSort = $sanitizer->selectorValue($rawField);
 			$selectorParts[] = 'sort=' . ($desc ? '-' : '') . $safeSort;
 		}
-		if ($limit) {
-			$selectorParts[] = 'limit=' . max(1, min(500, (int) $limit));
-		}
+		$parsedLimit = ($limit !== null && $limit !== '') ? (int) $limit : 20;
+		$selectorParts[] = 'limit=' . max(1, min(500, $parsedLimit > 0 ? $parsedLimit : 20));
 		if ($include) {
 			$safeInclude = $sanitizer->selectorValue((string) $include);
 			$selectorParts[] = "include={$safeInclude}";
@@ -78,6 +77,7 @@ final class PageListCommand extends Command
 				return $this->outputJsonSuccess($output, [
 					'items' => [],
 					'total' => 0,
+					'selector' => $selector ?: 'standard',
 				]);
 			}
 			warning("No pages found matching selector: [{$selector}]");
@@ -97,11 +97,12 @@ final class PageListCommand extends Command
 				if ($page->isLocked()) {
 					$status[] = 'locked';
 				}
+				$tplName = $page->template instanceof \ProcessWire\Template ? (string) $page->template->name : '';
 				$items[] = [
 					'id' => $page->id,
 					'path' => $page->path,
 					'title' => (string) ($page->title ?: $page->name),
-					'template' => $page->template->name,
+					'template' => $tplName,
 					'status' => $status ?: ['pub'],
 					'modified' => (int) $page->modified,
 				];
@@ -125,11 +126,12 @@ final class PageListCommand extends Command
 			if ($page->isLocked()) {
 				$status[] = 'locked';
 			}
+			$tplName = $page->template instanceof \ProcessWire\Template ? (string) $page->template->name : '';
 			$rows[] = [
 				(string) $page->id,
 				(string) $page->path,
 				mb_strimwidth((string) ($page->title ?: $page->name), 0, 30, '...'),
-				(string) $page->template->name,
+				$tplName,
 				implode('|', $status) ?: 'pub',
 				date('Y-m-d H:i', (int) $page->modified),
 			];

@@ -39,8 +39,10 @@ final class UserUpdateCommand extends Command
 		$rawId = $input->getOption('id');
 		$idStr = ($rawId !== null && $rawId !== '') ? trim((string) $rawId) : '';
 		$username = $input->getOption('name') ? trim((string) $input->getOption('name')) : '';
-		$email = $input->getOption('email') ? trim((string) $input->getOption('email')) : '';
-		$password = $input->getOption('password') ? (string) $input->getOption('password') : '';
+		$rawEmail = $input->getOption('email');
+		$rawPassword = $input->getOption('password');
+		$email = ($rawEmail !== null && $rawEmail !== '') ? trim((string) $rawEmail) : '';
+		$password = ($rawPassword !== null && $rawPassword !== '') ? (string) $rawPassword : '';
 		$addRoles = $input->getOption('add-role') ? array_values(array_map('strval', (array) $input->getOption('add-role'))) : [];
 		$removeRoles = $input->getOption('remove-role') ? array_values(array_map('strval', (array) $input->getOption('remove-role'))) : [];
 		$force = (bool) $input->getOption('force');
@@ -76,9 +78,31 @@ final class UserUpdateCommand extends Command
 			return $this->failCommand($output, $asJson, 'GUEST_PROTECTED', 'Refusing to modify the built-in guest user.');
 		}
 
+		if ($email === '' && $password === '' && $addRoles === [] && $removeRoles === []) {
+			return $this->failCommand($output, $asJson, 'MISSING_CHANGES', 'Provide at least one change (--email, --password, --add-role, or --remove-role).');
+		}
+
 		$normalizedRemove = array_map(static fn(string $r): string => strtolower(trim($r)), $removeRoles);
 		if (in_array('guest', $normalizedRemove, true)) {
 			return $this->failCommand($output, $asJson, 'SYSTEM_ROLE_PROTECTED', "Refusing to remove the mandatory 'guest' role from a user.");
+		}
+
+		$resolvedAddRoles = [];
+		foreach ($addRoles as $r) {
+			$roleObj = $this->findNamedSystemPage('roles', trim($r));
+			if (!($roleObj instanceof \ProcessWire\Role) || !$roleObj->id) {
+				return $this->failCommand($output, $asJson, 'ROLE_NOT_FOUND', "Role not found: '{$r}'.");
+			}
+			$resolvedAddRoles[] = $roleObj;
+		}
+
+		$resolvedRemoveRoles = [];
+		foreach ($removeRoles as $r) {
+			$roleObj = $this->findNamedSystemPage('roles', trim($r));
+			if (!($roleObj instanceof \ProcessWire\Role) || !$roleObj->id) {
+				return $this->failCommand($output, $asJson, 'ROLE_NOT_FOUND', "Role not found: '{$r}'.");
+			}
+			$resolvedRemoveRoles[] = $roleObj;
 		}
 
 		if (in_array('superuser', $normalizedRemove, true) && $user->isSuperuser()) {
@@ -116,8 +140,8 @@ final class UserUpdateCommand extends Command
 			'id' => (int) $user->id,
 			'name' => (string) $user->name,
 			'email' => $email,
-			'addRoles' => $addRoles,
-			'removeRoles' => $removeRoles,
+			'addRoles' => array_map(static fn(\ProcessWire\Role $r): string => (string) $r->name, $resolvedAddRoles),
+			'removeRoles' => array_map(static fn(\ProcessWire\Role $r): string => (string) $r->name, $resolvedRemoveRoles),
 			'dryRun' => $dryRun,
 		];
 
@@ -129,33 +153,31 @@ final class UserUpdateCommand extends Command
 			return Command::SUCCESS;
 		}
 
-		$user->of(false);
+		try {
+			$user->of(false);
 
-		if ($email !== '') {
-			$user->email = $email;
-		}
-		if ($password !== '') {
-			$user->pass = $password;
-		}
+			if ($email !== '') {
+				$user->email = $email;
+			}
+			if ($password !== '') {
+				$user->pass = $password;
+			}
 
-		foreach ($addRoles as $r) {
-			$role = $this->findNamedSystemPage('roles', $r);
-			if ($role instanceof \ProcessWire\Role && $role->id) {
+			foreach ($resolvedAddRoles as $role) {
 				if (!$user->hasRole($role)) {
 					$user->addRole($role);
 				}
-			} elseif (!$asJson) {
-				warning("Role '{$r}' not found, skipping.");
 			}
-		}
-		foreach ($removeRoles as $r) {
-			$role = $this->findNamedSystemPage('roles', $r);
-			if ($role instanceof \ProcessWire\Role && $role->id && $user->hasRole($role)) {
-				$user->removeRole($role);
+			foreach ($resolvedRemoveRoles as $role) {
+				if ($user->hasRole($role)) {
+					$user->removeRole($role);
+				}
 			}
-		}
 
-		$user->save();
+			$user->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['saved' => true]);

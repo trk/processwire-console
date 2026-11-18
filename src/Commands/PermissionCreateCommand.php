@@ -57,12 +57,16 @@ final class PermissionCreateCommand extends Command
 			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "Permission '{$cleanName}' already exists.");
 		}
 
-		$p = \ProcessWire\wire('permissions')->add($cleanName);
-		$p->of(false);
-		if ($title) {
-			$p->title = (string) $title;
+		try {
+			$p = \ProcessWire\wire('permissions')->add($cleanName);
+			$p->of(false);
+			if ($title) {
+				$p->title = (string) $title;
+			}
+			$p->save();
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
 		}
-		$p->save();
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, [

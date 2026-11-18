@@ -31,20 +31,24 @@ final class TemplateInfoCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$asJson = (bool) $input->getOption('json');
-		$name = $input->getOption('name') ?: $input->getArgument('name');
+		$rawOptName = $input->getOption('name');
+		$rawArgName = $input->getArgument('name');
+		$name = ($rawOptName !== null && $rawOptName !== '')
+			? (string) $rawOptName
+			: (($rawArgName !== null && $rawArgName !== '') ? (string) $rawArgName : '');
 
-		if (!$name && $this->canPrompt($input, $asJson)) {
+		if ($name === '' && $this->canPrompt($input, $asJson)) {
 			$name = $this->searchTemplate('Select the template to view info');
 			if ($name === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$name) {
+		if ($name === '') {
 			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide template name via argument or --name.');
 		}
 
-		if (preg_match('/^[A-Za-z0-9_-]+$/', (string) $name) !== 1) {
+		if (preg_match('/^[A-Za-z0-9_-]+$/', $name) !== 1 || ctype_digit($name)) {
 			return $this->failCommand($output, $asJson, 'INVALID_NAME', "Invalid template name: '{$name}'.");
 		}
 
@@ -68,7 +72,9 @@ final class TemplateInfoCommand extends Command
 		if ($template->flags & \ProcessWire\Template::flagSystem) {
 			$flags[] = 'System';
 		}
-		if ($template->noParents) {
+		if ((int) $template->noParents === -1) {
+			$flags[] = 'Only One';
+		} elseif ((int) $template->noParents === 1) {
 			$flags[] = 'No Parents';
 		}
 		if ($template->noChildren) {
@@ -118,9 +124,11 @@ final class TemplateInfoCommand extends Command
 
 		info('Access Control');
 		if ($template->useRoles) {
+			$viewRoles = $template->getRoles('view');
+			$editRoles = $template->getRoles('edit');
 			$accessRows = [
-				['View Roles', implode(', ', array_map(static fn(\ProcessWire\Role $r): string => (string) $r->name, iterator_to_array($template->roles)))],
-				['Edit Roles', implode(', ', array_map(static fn(\ProcessWire\Role $r): string => (string) $r->name, iterator_to_array($template->editRoles)))],
+				['View Roles', implode(', ', array_map(static fn(\ProcessWire\Page $r): string => (string) $r->name, iterator_to_array($viewRoles)))],
+				['Edit Roles', implode(', ', array_map(static fn(\ProcessWire\Page $r): string => (string) $r->name, iterator_to_array($editRoles)))],
 			];
 			table(
 				headers: ['Permission', 'Roles'],

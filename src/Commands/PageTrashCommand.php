@@ -53,6 +53,15 @@ final class PageTrashCommand extends Command
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'Page not found.');
 		}
 
+		if ($this->isRbacPage($page)) {
+			return $this->failCommand(
+				$output,
+				$asJson,
+				'RBAC_PAGE_PROTECTED',
+				'Use user:delete, role:*, or permission:delete commands to manage users, roles, or permissions.'
+			);
+		}
+
 		if ($this->isProtectedSystemPage($page)) {
 			return $this->failCommand($output, $asJson, 'SYSTEM_PAGE_PROTECTED', "Page #{$page->id} ({$page->path}) is a system page and cannot be trashed.");
 		}

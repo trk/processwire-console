@@ -81,9 +81,13 @@ final class RoleGrantCommand extends Command
 		}
 
 		if (!$already) {
-			$role->of(false);
-			$role->addPermission($permission);
-			$role->save();
+			try {
+				$role->of(false);
+				$role->addPermission($permission);
+				$role->save();
+			} catch (\Throwable $e) {
+				return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+			}
 		}
 
 		if ($asJson) {

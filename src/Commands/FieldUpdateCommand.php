@@ -60,13 +60,27 @@ final class FieldUpdateCommand extends Command
 			);
 			$changes = $this->parseKeyValueSets($prompted);
 		}
-		unset($changes['id'], $changes['name'], $changes['flags'], $changes['type']);
+		unset(
+			$changes['id'],
+			$changes['name'],
+			$changes['flags'],
+			$changes['flagsAdd'],
+			$changes['flagsDel'],
+			$changes['type'],
+			$changes['prevTable'],
+			$changes['prevName'],
+			$changes['prevFieldtype']
+		);
 
 		$dryRun = (bool) $input->getOption('dry-run');
 
 		$field = \ProcessWire\wire('fields')->get((string) $name);
 		if (!$field || !$field->id) {
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Field not found: {$name}");
+		}
+
+		if ((((int) $field->flags) & \ProcessWire\Field::flagSystem) !== 0) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_FIELD', "Field '{$name}' is a system field and cannot be modified via CLI.");
 		}
 
 		if ($changes === []) {
@@ -91,7 +105,11 @@ final class FieldUpdateCommand extends Command
 				}
 			}
 		}
-		\ProcessWire\wire('fields')->save($field);
+		try {
+			\ProcessWire\wire('fields')->save($field);
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
+		}
 
 		if ($asJson) {
 			return $this->outputJsonSuccess($output, $result + ['saved' => true]);

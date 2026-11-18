@@ -50,6 +50,10 @@ final class PagePublishCommand extends Command
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'Page not found.');
 		}
 
+		if ($this->isRbacPage($page)) {
+			return $this->failCommand($output, $asJson, 'RBAC_PAGE_PROTECTED', 'Users, roles, and permissions cannot be modified via page:publish.');
+		}
+
 		$result = ['id' => $page->id, 'path' => $page->path, 'wasUnpublished' => $page->isUnpublished(), 'dryRun' => $dryRun];
 
 		if ($dryRun) {

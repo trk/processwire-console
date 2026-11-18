@@ -65,7 +65,7 @@ final class UserDeleteCommand extends Command
 		if ($user->isSuperuser()) {
 			return $this->failCommand($output, $asJson, 'SUPERUSER_PROTECTED', 'Refusing to delete a superuser.');
 		}
-		if ((string) $user->name === 'guest') {
+		if ($user->isGuest() || (string) $user->name === 'guest') {
 			return $this->failCommand($output, $asJson, 'GUEST_PROTECTED', 'Refusing to delete the built-in guest user.');
 		}
 

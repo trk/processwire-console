@@ -77,8 +77,14 @@ final class FieldDetachCommand extends Command
 		if ((((int) $template->flags) & \ProcessWire\Template::flagSystem) !== 0) {
 			return $this->failCommand($output, $asJson, 'SYSTEM_TEMPLATE', "Template '{$templateName}' is a system template and its core fields cannot be detached via CLI.");
 		}
+		if ((((int) $field->flags) & \ProcessWire\Field::flagSystem) !== 0) {
+			return $this->failCommand($output, $asJson, 'SYSTEM_FIELD', "Field '{$fieldName}' is a system field and cannot be detached.");
+		}
 		if ((((int) $field->flags) & \ProcessWire\Field::flagPermanent) !== 0) {
 			return $this->failCommand($output, $asJson, 'PERMANENT_FIELD', "Field '{$fieldName}' is marked permanent and cannot be detached.");
+		}
+		if ((((int) $field->flags) & \ProcessWire\Field::flagGlobal) !== 0 && empty($template->noGlobal)) {
+			return $this->failCommand($output, $asJson, 'GLOBAL_FIELD', "Field '{$fieldName}' is a global field required by template '{$templateName}' and cannot be detached.");
 		}
 
 		$fg = $template->fieldgroup;

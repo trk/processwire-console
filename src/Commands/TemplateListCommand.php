@@ -37,10 +37,10 @@ final class TemplateListCommand extends Command
 		$filtered = [];
 
 		foreach ($templates as $template) {
-			if ($tag && stripos((string) $template->tags, (string) $tag) === false) {
+			if ($tag !== null && $tag !== '' && stripos((string) $template->tags, (string) $tag) === false) {
 				continue;
 			}
-			if ($search && (stripos($template->name, (string) $search) === false && stripos((string) $template->tags, (string) $search) === false)) {
+			if ($search !== null && $search !== '' && (stripos($template->name, (string) $search) === false && stripos((string) $template->tags, (string) $search) === false)) {
 				continue;
 			}
 

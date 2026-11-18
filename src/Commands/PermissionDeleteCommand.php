@@ -32,9 +32,21 @@ final class PermissionDeleteCommand extends Command
 		'page-sort',
 		'page-template',
 		'page-lock',
+		'page-hide',
+		'page-publish',
+		'page-edit-created',
+		'page-edit-trash-created',
+		'page-edit-images',
+		'page-edit-recent',
+		'page-clone',
+		'page-clone-tree',
+		'page-lister',
 		'profile-edit',
 		'user-admin',
 		'user-admin-all',
+		'logs-view',
+		'logs-edit',
+		'lang-edit',
 	];
 
 	protected function configure(): void
@@ -71,7 +83,7 @@ final class PermissionDeleteCommand extends Command
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "Permission not found: {$permName}");
 		}
 
-		if (in_array((string) $permission->name, self::SYSTEM_PERMISSIONS, true)) {
+		if ($this->isProtectedSystemPage($permission) || in_array((string) $permission->name, self::SYSTEM_PERMISSIONS, true)) {
 			return $this->failCommand($output, $asJson, 'SYSTEM_PERMISSION_PROTECTED', "Refusing to delete core permission '{$permission->name}'.");
 		}
 

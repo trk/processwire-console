@@ -56,6 +56,10 @@ final class PageMoveCommand extends Command
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'Page not found.');
 		}
 
+		if ($this->isRbacPage($page)) {
+			return $this->failCommand($output, $asJson, 'RBAC_PAGE_PROTECTED', 'Users, roles, and permissions cannot be moved.');
+		}
+
 		if ($this->isProtectedSystemPage($page)) {
 			return $this->failCommand($output, $asJson, 'SYSTEM_PAGE_PROTECTED', "Page #{$page->id} ({$page->path}) is a system page and cannot be moved.");
 		}
@@ -65,6 +69,14 @@ final class PageMoveCommand extends Command
 			: $this->resolvePage(null, $parentArg);
 		if ($newParent === null) {
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', "New parent not found: {$parentArg}");
+		}
+
+		if ($newParent->isTrash()) {
+			return $this->failCommand($output, $asJson, 'TRASH_PARENT_DISALLOWED', 'Use page:trash --force instead of moving a page into the Trash.');
+		}
+
+		if ($this->isRbacContainerPage($newParent)) {
+			return $this->failCommand($output, $asJson, 'RBAC_CONTAINER_PROTECTED', 'Pages cannot be moved into RBAC system containers.');
 		}
 
 		if ((int) $newParent->id === (int) $page->id || $newParent->parents->has($page)) {

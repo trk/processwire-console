@@ -33,16 +33,20 @@ final class FieldInfoCommand extends Command
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
 		$asJson = (bool) $input->getOption('json');
-		$name = $input->getOption('name') ?: $input->getArgument('name');
+		$rawOptName = $input->getOption('name');
+		$rawArgName = $input->getArgument('name');
+		$name = ($rawOptName !== null && $rawOptName !== '')
+			? (string) $rawOptName
+			: (($rawArgName !== null && $rawArgName !== '') ? (string) $rawArgName : '');
 
-		if (!$name && $this->canPrompt($input, $asJson)) {
+		if ($name === '' && $this->canPrompt($input, $asJson)) {
 			$name = $this->searchField('Search for a field to view info');
 			if ($name === '') {
 				return Command::SUCCESS;
 			}
 		}
 
-		if (!$name) {
+		if ($name === '') {
 			return $this->failCommand($output, $asJson, 'MISSING_NAME', 'Provide field name via argument or --name.');
 		}
 

@@ -30,20 +30,39 @@ final class UserListCommand extends Command
 
 	protected function execute(InputInterface $input, OutputInterface $output): int
 	{
-		$search = $input->getOption('search') ? (string) $input->getOption('search') : '';
-		$role = $input->getOption('role') ? (string) $input->getOption('role') : '';
-		$limit = max(1, (int) $input->getOption('limit'));
+		$rawSearch = $input->getOption('search');
+		$rawRole = $input->getOption('role');
+		$search = ($rawSearch !== null && $rawSearch !== '') ? trim((string) $rawSearch) : '';
+		$role = ($rawRole !== null && $rawRole !== '') ? trim((string) $rawRole) : '';
+		$rawLimit = $input->getOption('limit');
+		$parsedLimit = ($rawLimit !== null && $rawLimit !== '') ? (int) $rawLimit : 50;
+		$limit = max(1, min(500, $parsedLimit > 0 ? $parsedLimit : 50));
 		$asJson = (bool) $input->getOption('json');
 
 		$sanitizer = \ProcessWire\wire('sanitizer');
 
 		$selector = [];
 		if ($search !== '') {
-			$safeSearch = $sanitizer->selectorValue($search);
+			$nameProbe = (string) $sanitizer->pageName($search, true);
+			$safeSearch = (string) $sanitizer->selectorValue($search);
+			if ($nameProbe === '' || $safeSearch === '') {
+				if ($asJson) {
+					return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0, 'limit' => $limit]);
+				}
+				warning('No users found.');
+				return Command::SUCCESS;
+			}
 			$selector[] = "name%={$safeSearch}";
 		}
 		if ($role !== '') {
-			$safeRole = $sanitizer->selectorValue($role);
+			$safeRole = (string) $sanitizer->selectorValue($role);
+			if ($safeRole === '') {
+				if ($asJson) {
+					return $this->outputJsonSuccess($output, ['items' => [], 'total' => 0, 'limit' => $limit]);
+				}
+				warning('No users found.');
+				return Command::SUCCESS;
+			}
 			$selector[] = "roles={$safeRole}";
 		}
 		$selector[] = "limit={$limit}";

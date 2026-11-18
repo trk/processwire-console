@@ -62,46 +62,60 @@ final class RoleCreateCommand extends Command
 			return $this->failCommand($output, $asJson, 'ALREADY_EXISTS', "Role '{$cleanName}' already exists.");
 		}
 
-		$role = \ProcessWire\wire('roles')->add($cleanName);
-		$role->of(false);
-		if ($title) {
-			$role->title = (string) $title;
-		}
-		$role->save();
-
-		$granted = [];
-		$permissionsApi = \ProcessWire\wire('permissions');
-		if ($wantInteractive && $this->canPrompt($input, $asJson)) {
-			$all = [];
-			foreach ($permissionsApi as $p) {
-				$all[] = (string) $p->name;
-			}
-			$choices = multiselect('Grant permissions to this role?', $all, required: false);
-			if ($choices !== []) {
-				foreach ($choices as $perm) {
-					$p = $this->findNamedSystemPage('permissions', (string) $perm);
-					if ($p instanceof \ProcessWire\Permission && $p->id && !$role->hasPermission($p)) {
-						$role->addPermission($p);
-						$granted[] = (string) $p->name;
-					}
-				}
-				$role->save();
-			}
-		} elseif ($permsOpt !== '') {
+		$resolvedPerms = [];
+		if ($permsOpt !== '' && !($wantInteractive && $this->canPrompt($input, $asJson))) {
 			foreach (explode(',', $permsOpt) as $perm) {
 				$perm = trim($perm);
 				if ($perm === '') {
 					continue;
 				}
 				$p = $this->findNamedSystemPage('permissions', $perm);
-				if ($p instanceof \ProcessWire\Permission && $p->id && !$role->hasPermission($p)) {
-					$role->addPermission($p);
-					$granted[] = (string) $p->name;
+				if (!($p instanceof \ProcessWire\Permission) || !$p->id) {
+					return $this->failCommand($output, $asJson, 'PERMISSION_NOT_FOUND', "Permission not found: '{$perm}'.");
+				}
+				$resolvedPerms[] = $p;
+			}
+		}
+
+		try {
+			$role = \ProcessWire\wire('roles')->add($cleanName);
+			$role->of(false);
+			if ($title) {
+				$role->title = (string) $title;
+			}
+			$role->save();
+
+			$granted = [];
+			$permissionsApi = \ProcessWire\wire('permissions');
+			if ($wantInteractive && $this->canPrompt($input, $asJson)) {
+				$all = [];
+				foreach ($permissionsApi as $p) {
+					$all[] = (string) $p->name;
+				}
+				$choices = multiselect('Grant permissions to this role?', $all, required: false);
+				if ($choices !== []) {
+					foreach ($choices as $perm) {
+						$p = $this->findNamedSystemPage('permissions', (string) $perm);
+						if ($p instanceof \ProcessWire\Permission && $p->id && !$role->hasPermission($p)) {
+							$role->addPermission($p);
+							$granted[] = (string) $p->name;
+						}
+					}
+					$role->save();
+				}
+			} elseif ($resolvedPerms !== []) {
+				foreach ($resolvedPerms as $p) {
+					if (!$role->hasPermission($p)) {
+						$role->addPermission($p);
+						$granted[] = (string) $p->name;
+					}
+				}
+				if ($granted !== []) {
+					$role->save();
 				}
 			}
-			if ($granted !== []) {
-				$role->save();
-			}
+		} catch (\Throwable $e) {
+			return $this->failCommand($output, $asJson, 'SAVE_FAILED', $e->getMessage());
 		}
 
 		if ($asJson) {

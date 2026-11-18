@@ -50,6 +50,10 @@ final class PageRestoreCommand extends Command
 			return $this->failCommand($output, $asJson, 'NOT_FOUND', 'Page not found.');
 		}
 
+		if ($this->isRbacPage($page)) {
+			return $this->failCommand($output, $asJson, 'RBAC_PAGE_PROTECTED', 'Users, roles, and permissions cannot be modified via page:restore.');
+		}
+
 		if (!$page->isTrash()) {
 			return $this->failCommand($output, $asJson, 'NOT_IN_TRASH', "Page #{$page->id} ({$page->path}) is not in Trash.");
 		}
@@ -73,7 +77,7 @@ final class PageRestoreCommand extends Command
 		}
 
 		if ($asJson) {
-			return $this->outputJsonSuccess($output, $result + ['restored' => true, 'path' => $page->path]);
+			return $this->outputJsonSuccess($output, array_merge($result, ['restored' => true, 'path' => (string) $page->path]));
 		}
 
 		info("Restored page #{$page->id} to {$page->path}.");
