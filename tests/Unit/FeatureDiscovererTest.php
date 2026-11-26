@@ -209,4 +209,90 @@ final class FeatureDiscovererTest extends TestCase
 			$modulesRoot . '/ProcessAnalytics/tests/e2e/',
 		], $nestedSegment);
 	}
+
+	public function testHasDatabaseConfigurationSupportsMysqlPgsqlAndSqlite(): void
+	{
+		$this->assertFalse(FeatureDiscoverer::hasDatabaseConfiguration(null));
+		$this->assertFalse(FeatureDiscoverer::hasDatabaseConfiguration((object) []));
+		$this->assertFalse(FeatureDiscoverer::hasDatabaseConfiguration((object) [
+			'dbType' => 'mysql',
+			'dbName' => '',
+			'dbFile' => '',
+		]));
+		$this->assertFalse(FeatureDiscoverer::hasDatabaseConfiguration((object) [
+			'dbType' => 'mysql',
+			'dbName' => '   ',
+			'dbFile' => '   ',
+		]));
+
+		$this->assertTrue(FeatureDiscoverer::hasDatabaseConfiguration((object) [
+			'dbType' => 'mysql',
+			'dbName' => 'processwire',
+		]));
+		$this->assertTrue(FeatureDiscoverer::hasDatabaseConfiguration((object) [
+			'dbType' => 'pgsql',
+			'dbName' => 'pw_pg',
+		]));
+		$this->assertTrue(FeatureDiscoverer::hasDatabaseConfiguration((object) [
+			'dbType' => 'sqlite',
+			'dbName' => '',
+			'dbFile' => 'site.sqlite',
+		]));
+		$this->assertTrue(FeatureDiscoverer::hasDatabaseConfiguration((object) [
+			'dbType' => 'sqlite',
+			'dbName' => '',
+			'dbFile' => '',
+		]));
+		$this->assertTrue(FeatureDiscoverer::hasDatabaseConfiguration((object) [
+			'dbType' => 'SQLITE',
+			'dbName' => '',
+			'dbFile' => '',
+		]));
+		$this->assertTrue(FeatureDiscoverer::hasDatabaseConfiguration((object) [
+			'dbFile' => '/tmp/test.sqlite',
+		]));
+
+		$makeMagicConfig = static function (array $props): object {
+			return new class($props) {
+				/** @var array<string, mixed> */
+				private array $props;
+
+				/** @param array<string, mixed> $props */
+				public function __construct(array $props)
+				{
+					$this->props = $props;
+				}
+
+				public function __isset(string $name): bool
+				{
+					return isset($this->props[$name]) && $this->props[$name] !== '';
+				}
+
+				public function __get(string $name): mixed
+				{
+					return $this->props[$name] ?? null;
+				}
+			};
+		};
+
+		$this->assertTrue(FeatureDiscoverer::hasDatabaseConfiguration($makeMagicConfig([
+			'dbType' => 'sqlite',
+			'dbName' => '',
+			'dbFile' => 'custom.sqlite',
+		])));
+		$this->assertTrue(FeatureDiscoverer::hasDatabaseConfiguration($makeMagicConfig([
+			'dbType' => 'sqlite',
+			'dbName' => '',
+			'dbFile' => '',
+		])));
+		$this->assertFalse(FeatureDiscoverer::hasDatabaseConfiguration($makeMagicConfig([
+			'dbType' => 'mysql',
+			'dbName' => '',
+			'dbFile' => '',
+		])));
+
+		$wireBinSource = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/wire');
+		$this->assertStringContainsString('FeatureDiscoverer::hasDatabaseConfiguration($config)', $wireBinSource);
+		$this->assertStringNotContainsString('if ($config->dbName)', $wireBinSource);
+	}
 }

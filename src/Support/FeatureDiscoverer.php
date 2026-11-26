@@ -341,6 +341,29 @@ final class FeatureDiscoverer
 	}
 
 	/**
+	 * Determine whether a ProcessWire config object declares a database connection
+	 * (MySQL/PostgreSQL `dbName`, explicit SQLite `dbFile`, or `dbType === 'sqlite'`).
+	 */
+	public static function hasDatabaseConfiguration(?object $config): bool
+	{
+		if (!is_object($config)) {
+			return false;
+		}
+
+		if (!empty($config->dbName) && is_scalar($config->dbName) && trim((string) $config->dbName) !== '') {
+			return true;
+		}
+
+		if (!empty($config->dbFile) && is_scalar($config->dbFile) && trim((string) $config->dbFile) !== '') {
+			return true;
+		}
+
+		return !empty($config->dbType)
+			&& is_scalar($config->dbType)
+			&& strtolower(trim((string) $config->dbType)) === 'sqlite';
+	}
+
+	/**
 	 * Resolve validated MySQL/MariaDB storage engine and character set from ProcessWire config.
 	 *
 	 * @return array{engine: string, charset: string}

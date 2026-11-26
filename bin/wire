@@ -224,8 +224,8 @@ $wireBootstrapError = null;
 
 try {
 	$config = \ProcessWire\ProcessWire::buildConfig($pwRoot);
-	// Only attempt full bootstrap if database is configured
-	if ($config->dbName) {
+	// Only attempt full bootstrap if database is configured (MySQL/PgSQL dbName or SQLite dbType/dbFile)
+	if (FeatureDiscoverer::hasDatabaseConfiguration($config)) {
 		$wire = new \ProcessWire\ProcessWire($config);
 	}
 } catch (\Throwable $e) {
